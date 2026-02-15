@@ -249,6 +249,7 @@ let categories = [
 
 // Local image mapping for categories and products
 const PRODUCT_COUNT = 97;
+const PRODUCT_GALLERY_SIZE = 8;
 const categoryImageById = Object.fromEntries(
   categories.map((category) => [category.id, `/mock-images/categories/${category.id}.svg`])
 );
@@ -306,7 +307,25 @@ const productDescriptions = [
   'Best value for money',
 ];
 
-const createProductImagePath = (index) => `/mock-images/products/p-${String(index + 1).padStart(3, '0')}.svg`;
+const createProductImagePath = (index) => {
+  const normalizedIndex = ((index % PRODUCT_COUNT) + PRODUCT_COUNT) % PRODUCT_COUNT;
+  return `/mock-images/products/p-${String(normalizedIndex + 1).padStart(3, '0')}.svg`;
+};
+
+const createProductGallery = (index) => {
+  const gallery = [];
+  const seen = new Set();
+  const stride = 13;
+
+  for (let offset = 0; gallery.length < PRODUCT_GALLERY_SIZE; offset += 1) {
+    const nextImage = createProductImagePath(index + offset * stride);
+    if (seen.has(nextImage)) continue;
+    seen.add(nextImage);
+    gallery.push(nextImage);
+  }
+
+  return gallery;
+};
 
 const generateProducts = () => {
   const generated = [];
@@ -325,7 +344,8 @@ const generateProducts = () => {
     const stock = index % 14 === 0 ? 0 : 8 + ((index * 9) % 132);
     const inStock = stock > 0;
     const createdAt = new Date(Date.now() - randInt(0, 30 * 24 * 60 * 60 * 1000)).toISOString();
-    const image = createProductImagePath(index);
+    const images = createProductGallery(index);
+    const image = images[0];
 
     generated.push({
       id: String(id),
@@ -334,7 +354,7 @@ const generateProducts = () => {
       price,
       originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
       image,
-      images: [image],
+      images,
       categoryId: category.id,
       rating,
       reviewCount: 20 + ((index * 37) % 680),
