@@ -1,0 +1,1670 @@
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import crypto from "crypto";
+import Stripe from "stripe";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { z } from "zod";
+import { nanoid } from "nanoid";
+import { Prisma } from "@prisma/client";
+import prisma from "./prisma";
+import { EmailService } from "./email";
+
+const app = express();
+type RequestWithRawBody = express.Request & { rawBody?: Buffer };
+
+// Trust proxy (needed when behind reverse proxies/load balancers)
+app.set("trust proxy", true);
+
+// Security middleware
+app.use(helmet());
+
+// CORS - restrict allowed origins via ALLOWED_ORIGINS env var in production
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
+  : process.env.NODE_ENV === "production"
+  ? []
+  : ["http://localhost:8080", "http://localhost:5173"];
+if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
+  console.error("CRITICAL: Set ALLOWED_ORIGINS in production to restrict CORS.");
+  process.exit(1);
+}
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  })
+);
+
+// Capture raw body for webhook signature verification
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: RequestWithRawBody, _res, buf: Buffer) => {
+      req.rawBody = buf;
+    },
+  })
+);
+
+// Rate limiting
+const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false });
+app.use(apiLimiter);
+
+// Stricter rate limit for admin login attempts
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Too many login attempts, please try again later.",
+});
+
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-prod";
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "info@imkmarket.com";
+const SUPPORT_PHONE = process.env.SUPPORT_PHONE || "+232-76-123-456";
+const BRAND_NAME = "IMK-MARKET";
+const PAYMENT_CURRENCY = (process.env.PAYMENT_CURRENCY || "SLE") as "SLE" | "SLL" | "USD";
+const PAYMENT_WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET || "dev-webhook-secret";
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const CURRENCY_SYMBOL = process.env.CURRENCY_SYMBOL || "Le";
+
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" }) : null;
+
+// Security checks: fail fast in production when critical secrets are not set
+const isProduction = process.env.NODE_ENV === "production";
+const usingDefaultJwt = JWT_SECRET === "change-me-in-prod";
+const usingDefaultWebhook = PAYMENT_WEBHOOK_SECRET === "dev-webhook-secret";
+if (isProduction && (usingDefaultJwt || usingDefaultWebhook)) {
+  console.error("CRITICAL: Missing or insecure secrets for production environment.");
+  if (usingDefaultJwt) console.error("JWT_SECRET is using a development default.");
+  if (usingDefaultWebhook) console.error("PAYMENT_WEBHOOK_SECRET is using a development default.");
+  console.error("Set secure environment variables and restart the server.");
+  process.exit(1);
+}
+
+// Enforce HTTPS in production
+if (isProduction) {
+  app.use((req, res, next) => {
+    const proto = (req.headers["x-forwarded-proto"] || "").toString();
+    if (req.secure || proto === "https") return next();
+    // redirect to HTTPS
+    if (req.headers.host) {
+      return res.redirect(301, `https://${req.headers.host}${req.url}`);
+    }
+    return next();
+  });
+}
+
+function formatMoney(amount: number) {
+  return `${CURRENCY_SYMBOL} ${amount.toFixed(2)}`;
+}
+const emailService = new EmailService(BRAND_NAME, SUPPORT_EMAIL, SUPPORT_PHONE);
+
+function createOrderId() {
+  return `ORD-${nanoid(6).toUpperCase()}`;
+}
+
+function createPaymentId() {
+  return `PAY-${nanoid(8).toUpperCase()}`;
+}
+
+function createPaymentReference(paymentId: string) {
+  return `IMK-${paymentId.replace("PAY-", "")}`;
+}
+
+function createTrackingNumber() {
+  return `TRK-${nanoid(10).toUpperCase()}`;
+}
+
+const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
+type OrderStatus = (typeof ORDER_STATUSES)[number];
+
+const TRACKING_EVENT_CONTENT: Record<OrderStatus, { title: string; message: string }> = {
+  pending: {
+    title: "Order Confirmed",
+    message: "Your order has been received and is waiting for processing.",
+  },
+  processing: {
+    title: "Order Processing",
+    message: "Your items are being prepared for dispatch.",
+  },
+  shipped: {
+    title: "Order Shipped",
+    message: "Your package is in transit.",
+  },
+  delivered: {
+    title: "Order Delivered",
+    message: "Your order has been delivered successfully.",
+  },
+  cancelled: {
+    title: "Order Cancelled",
+    message: "This order was cancelled.",
+  },
+};
+
+const TRACKING_LOCATION_BY_STATUS: Record<OrderStatus, string> = {
+  pending: "Order desk",
+  processing: "Warehouse",
+  shipped: "Transit hub",
+  delivered: "Delivery destination",
+  cancelled: "Order desk",
+};
+
+const CARGO_ESTIMATE_DAYS: Record<string, number> = {
+  air: 3,
+  land: 7,
+  sea: 18,
+};
+
+function isOrderStatus(value: string): value is OrderStatus {
+  return (ORDER_STATUSES as readonly string[]).includes(value);
+}
+
+function normalizeOptionalText(value?: string | null) {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : undefined;
+}
+
+function normalizePhone(value?: string | null) {
+  if (!value) return "";
+  return value.replace(/[^\d+]/g, "");
+}
+
+function resolveEstimatedDelivery(cargoType?: string | null, from = new Date()) {
+  const key = (cargoType || "").toLowerCase();
+  const days = CARGO_ESTIMATE_DAYS[key] ?? 6;
+  const date = new Date(from);
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function resolveStatusLocation(
+  status: OrderStatus,
+  shippingAddress: string,
+  explicitLocation?: string | null
+) {
+  const provided = normalizeOptionalText(explicitLocation);
+  if (provided) return provided;
+  if (status === "delivered") return shippingAddress;
+  return TRACKING_LOCATION_BY_STATUS[status];
+}
+
+const orderItemSchema = z.object({
+  productId: z.union([z.string(), z.number()]).optional(),
+  productName: z.string().min(1),
+  quantity: z.number().int().min(1),
+  price: z.number().min(0),
+});
+type OrderItemPayload = z.infer<typeof orderItemSchema>;
+function parseOrderItems(value: unknown): OrderItemPayload[] {
+  const parsed = z.array(orderItemSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+async function appendTrackingEvent(payload: {
+  orderId: string;
+  status: OrderStatus;
+  location?: string | null;
+  note?: string;
+  source?: "system" | "admin";
+  eventAt?: Date;
+}) {
+  const content = TRACKING_EVENT_CONTENT[payload.status];
+  const note = normalizeOptionalText(payload.note);
+  const message = note ? `${content.message} ${note}` : content.message;
+  await prisma.orderTrackingEvent.create({
+    data: {
+      orderId: payload.orderId,
+      status: payload.status,
+      title: content.title,
+      message,
+      location: normalizeOptionalText(payload.location) || undefined,
+      source: payload.source || "system",
+      eventAt: payload.eventAt || new Date(),
+    },
+  });
+}
+
+function buildTrackingPayload(order: {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  total: number;
+  cargoType: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  shippingAddress: string;
+  trackingNumber: string | null;
+  trackingCarrier: string | null;
+  trackingUrl: string | null;
+  currentLocation: string | null;
+  estimatedDelivery: Date | null;
+  shippedAt: Date | null;
+  deliveredAt: Date | null;
+  lastTrackingUpdate: Date | null;
+  items: { productName: string; quantity: number; price: number }[];
+  trackingEvents: {
+    id: string;
+    status: string;
+    title: string;
+    message: string;
+    location: string | null;
+    source: string;
+    eventAt: Date;
+    createdAt: Date;
+  }[];
+}) {
+  const progressMap: Record<string, number> = {
+    pending: 20,
+    processing: 45,
+    shipped: 75,
+    delivered: 100,
+    cancelled: 0,
+  };
+  const fallbackEvent = {
+    id: `fallback-${order.id}`,
+    status: order.status,
+    title: TRACKING_EVENT_CONTENT[isOrderStatus(order.status) ? order.status : "pending"].title,
+    message: TRACKING_EVENT_CONTENT[isOrderStatus(order.status) ? order.status : "pending"].message,
+    location: order.currentLocation || TRACKING_LOCATION_BY_STATUS.pending,
+    source: "system",
+    eventAt: order.createdAt,
+    createdAt: order.createdAt,
+  };
+  const trackingEvents = order.trackingEvents.length ? order.trackingEvents : [fallbackEvent];
+  return {
+    id: order.id,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    total: order.total,
+    cargoType: order.cargoType,
+    trackingNumber: order.trackingNumber,
+    trackingCarrier: order.trackingCarrier,
+    trackingUrl: order.trackingUrl,
+    currentLocation: order.currentLocation,
+    estimatedDelivery: order.estimatedDelivery,
+    shippedAt: order.shippedAt,
+    deliveredAt: order.deliveredAt,
+    lastTrackingUpdate: order.lastTrackingUpdate,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    progress: progressMap[order.status] ?? 0,
+    items: order.items.map((item) => ({
+      productName: item.productName,
+      quantity: item.quantity,
+      price: item.price,
+    })),
+    events: trackingEvents.map((event) => ({
+      id: event.id,
+      status: event.status,
+      title: event.title,
+      message: event.message,
+      location: event.location,
+      source: event.source,
+      eventAt: event.eventAt,
+      createdAt: event.createdAt,
+    })),
+    support: {
+      email: SUPPORT_EMAIL,
+      phone: SUPPORT_PHONE,
+    },
+  };
+}
+
+async function createOrderRecord(payload: {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  shippingAddress: string;
+  paymentMethod: "cod" | "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe";
+  paymentStatus: "pending" | "initialized" | "paid" | "failed";
+  paymentReference?: string;
+  cargoType?: string;
+  items: { productId?: string | number; productName: string; quantity: number; price: number }[];
+}) {
+  const total = payload.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const id = createOrderId();
+  const createdAt = new Date();
+  const estimatedDelivery = resolveEstimatedDelivery(payload.cargoType, createdAt);
+  const currentLocation = resolveStatusLocation("pending", payload.shippingAddress);
+
+  const order = await prisma.order.create({
+    data: {
+      id,
+      customerName: payload.customerName,
+      customerEmail: payload.customerEmail,
+      customerPhone: payload.customerPhone,
+      shippingAddress: payload.shippingAddress,
+      paymentMethod: payload.paymentMethod,
+      paymentStatus: payload.paymentStatus,
+      paymentReference: payload.paymentReference,
+      cargoType: payload.cargoType,
+      trackingNumber: createTrackingNumber(),
+      trackingCarrier: "IMK Logistics",
+      currentLocation,
+      estimatedDelivery,
+      lastTrackingUpdate: createdAt,
+      total,
+      items: {
+        create: payload.items.map((item) => ({
+          productId: item.productId?.toString(),
+          productName: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      },
+      trackingEvents: {
+        create: {
+          status: "pending",
+          title: TRACKING_EVENT_CONTENT.pending.title,
+          message: TRACKING_EVENT_CONTENT.pending.message,
+          location: currentLocation,
+          source: "system",
+          eventAt: createdAt,
+        },
+      },
+    },
+  });
+
+  const orderSummary = payload.items[0];
+  const email = emailService.orderConfirmationTemplate({
+    id: order.id,
+    customerName: payload.customerName,
+    productName: orderSummary?.productName || "Order Items",
+    quantity: orderSummary?.quantity || payload.items.length,
+    price: formatMoney(total),
+    date: order.createdAt.toISOString(),
+    cargo: payload.cargoType,
+    total: formatMoney(total),
+  });
+  
+  await prisma.emailHistory.create({
+    data: {
+      to: payload.customerEmail,
+      subject: email.subject,
+      template: "orderConfirmation",
+      status: "Sent",
+    },
+  });
+
+  return {
+    id: order.id,
+    total: order.total,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    trackingNumber: order.trackingNumber,
+    estimatedDelivery: order.estimatedDelivery,
+  };
+}
+
+async function ensureCategory(name: string) {
+  let category = await prisma.category.findUnique({
+    where: { name },
+  });
+  if (!category) {
+    category = await prisma.category.create({
+      data: { name },
+    });
+  }
+  return category;
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = auth.slice(7);
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { role?: string; email?: string };
+    if (payload.role !== "admin") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+}
+
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+app.get("/api/categories", async (_req, res) => {
+  try {
+    const categories = await prisma.category.findMany({ orderBy: { name: "asc" } });
+    const products = await prisma.product.findMany({ select: { categoryId: true } });
+    const productCounts = products.reduce<Record<string, number>>((acc, product) => {
+      acc[product.categoryId] = (acc[product.categoryId] || 0) + 1;
+      return acc;
+    }, {});
+
+    const result = categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      image: category.image,
+      productCount: productCounts[category.id] || 0,
+    }));
+
+    res.json(result);
+  } catch (e) {
+    console.error("Fetch categories error", e);
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+app.get("/api/products", async (req, res) => {
+  try {
+    const { category, q, sort } = req.query as { category?: string; q?: string; sort?: string };
+    const categories = await prisma.category.findMany();
+    const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
+
+    let result = await prisma.product.findMany({ where: { status: "active" } });
+    if (category) {
+      result = result.filter((product) => categoryMap.get(product.categoryId) === category);
+    }
+    if (q) {
+      const query = q.toLowerCase();
+      result = result.filter(
+        (product) =>
+          product.name.toLowerCase().includes(query) ||
+          product.description.toLowerCase().includes(query)
+      );
+    }
+
+    if (sort === "price-low") result.sort((a, b) => a.price - b.price);
+    if (sort === "price-high") result.sort((a, b) => b.price - a.price);
+    if (sort === "rating") result.sort((a, b) => b.rating - a.rating);
+    if (!sort || sort === "newest") result.sort((a, b) => b.createdAt.toISOString().localeCompare(a.createdAt.toISOString()));
+
+    res.json(
+      result.map((product) => ({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        originalPrice: product.originalPrice,
+        image: product.image,
+        images: product.images?.length ? product.images : [product.image],
+        category: categoryMap.get(product.categoryId) || "Uncategorized",
+        rating: product.rating,
+        reviewCount: product.reviewCount,
+        inStock: product.inStock,
+        freeShipping: product.freeShipping,
+        badge: product.badge,
+      }))
+    );
+  } catch (e) {
+    console.error("Fetch products error", e);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+});
+
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product || product.status !== "active") {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const category = await prisma.category.findUnique({ where: { id: product.categoryId } });
+    res.json({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      originalPrice: product.originalPrice,
+      image: product.image,
+      images: product.images?.length ? product.images : [product.image],
+      category: category?.name || "Uncategorized",
+      rating: product.rating,
+      reviewCount: product.reviewCount,
+      inStock: product.inStock,
+      freeShipping: product.freeShipping,
+      badge: product.badge,
+    });
+  } catch (e) {
+    console.error("Fetch product error", e);
+    res.status(500).json({ error: "Failed to fetch product" });
+  }
+});
+
+app.post("/api/payments/initiate", async (req, res) => {
+  const schema = z.object({
+    customerName: z.string().min(1),
+    customerEmail: z.string().email(),
+    customerPhone: z.string().min(5),
+    shippingAddress: z.string().min(5),
+    paymentMethod: z.enum(["orange_money", "afrimoney", "qmoney", "paystack", "stripe"]),
+    cargoType: z.string().optional(),
+    items: z.array(orderItemSchema).min(1),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const {
+    customerName,
+    customerEmail,
+    customerPhone,
+    shippingAddress,
+    paymentMethod,
+    items,
+    cargoType,
+  } = parsed.data;
+  const amount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const paymentId = createPaymentId();
+  const reference = createPaymentReference(paymentId);
+  const createdAt = new Date().toISOString();
+  const jsonItems = items.map((item) => ({
+    ...(item.productId !== undefined ? { productId: item.productId } : {}),
+    productName: item.productName,
+    quantity: item.quantity,
+    price: item.price,
+  }));
+
+  try {
+    const created = await prisma.payment.create({
+      data: {
+        provider: paymentMethod,
+        status: "pending",
+        amount,
+        currency: PAYMENT_CURRENCY,
+        reference,
+        paymentMethod,
+        customerName,
+        customerEmail,
+        customerPhone,
+        shippingAddress,
+        cargoType,
+        items: jsonItems as Prisma.InputJsonValue,
+      },
+    });
+
+    // If using Stripe, create a Checkout Session and return redirect URL
+    if (paymentMethod === "stripe") {
+      if (!stripe) {
+        return res.status(500).json({ error: "Stripe not configured" });
+      }
+      try {
+        const currency = PAYMENT_CURRENCY === "USD" ? "usd" : "usd";
+        const line_items = items.map((it) => ({
+          price_data: {
+            currency,
+            product_data: { name: it.productName },
+            unit_amount: Math.round(it.price * 100),
+          },
+          quantity: it.quantity,
+        }));
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          mode: "payment",
+          line_items,
+          success_url: process.env.PAYMENT_SUCCESS_URL || "https://example.com/success?session_id={CHECKOUT_SESSION_ID}",
+          cancel_url: process.env.PAYMENT_CANCEL_URL || "https://example.com/cancel",
+          metadata: { paymentId: created.id },
+        });
+
+        // persist provider reference
+        await prisma.payment.update({ where: { id: created.id }, data: { providerReference: session.id } });
+
+        const instructions = ["You will be redirected to a secure card payment page."];
+        return res.json({
+          id: created.id,
+          status: created.status,
+          amount: created.amount,
+          currency: created.currency,
+          reference,
+          paymentMethod,
+          instructions,
+          paymentUrl: session.url,
+          requiresRedirect: true,
+        });
+      } catch (error: unknown) {
+        console.error("Stripe session creation failed", error);
+        return res.status(500).json({ error: "Payment initialization failed" });
+      }
+    }
+
+    const instructions =
+      paymentMethod === "paystack"
+        ? [
+            "You will be redirected to a secure card payment page.",
+            "Complete the payment to confirm your order.",
+          ]
+        : [
+            `Send ${formatMoney(amount)} to ${SUPPORT_PHONE} (${BRAND_NAME}).`,
+            `Use reference: ${reference}.`,
+            "Your order will be created once payment is confirmed.",
+          ];
+
+    res.json({
+      id: created.id,
+      status: created.status,
+      amount: created.amount,
+      currency: created.currency,
+      reference,
+      paymentMethod,
+      instructions,
+      paymentUrl: paymentMethod === "paystack" ? null : null,
+      requiresRedirect: paymentMethod === "paystack",
+    });
+  } catch (e) {
+    console.error("Initiate payment error", e);
+    res.status(500).json({ error: "Payment initiation failed" });
+  }
+});
+
+app.get("/api/payments/:id", async (req, res) => {
+  try {
+    const payment = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    if (!payment) return res.status(404).json({ error: "Not found" });
+    const orderTracking = payment.orderId
+      ? await prisma.order.findUnique({
+          where: { id: payment.orderId },
+          select: { trackingNumber: true },
+        })
+      : null;
+    res.json({
+      id: payment.id,
+      status: payment.status,
+      amount: payment.amount,
+      currency: payment.currency,
+      reference: payment.reference,
+      paymentMethod: payment.paymentMethod,
+      orderId: payment.orderId,
+      trackingNumber: orderTracking?.trackingNumber || null,
+      providerReference: payment.providerReference,
+      updatedAt: payment.updatedAt,
+      items: payment.items || null,
+    });
+  } catch (e) {
+    console.error("Fetch payment error", e);
+    res.status(500).json({ error: "Failed to fetch payment" });
+  }
+});
+
+app.post("/api/payments/webhook/:provider", async (req, res) => {
+  const providerParam = req.params.provider;
+
+  // Stripe-specific webhook verification and handling
+  if (providerParam === "stripe") {
+    if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+      console.error("Stripe webhook received but Stripe is not configured.");
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+    const sig = req.headers["stripe-signature"] as string | undefined;
+    if (!sig) return res.status(400).json({ error: "Missing stripe-signature header" });
+    try {
+      const rawBody = (req as RequestWithRawBody).rawBody;
+      if (!rawBody) return res.status(400).json({ error: "Missing raw request body" });
+      const event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+      if (event.type === "checkout.session.completed") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const paymentId = session.metadata?.paymentId;
+        if (!paymentId) return res.status(400).json({ error: "Missing payment metadata" });
+        const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+        if (!payment) return res.status(404).json({ error: "Payment not found" });
+        await prisma.payment.update({ where: { id: payment.id }, data: { status: "paid", providerReference: session.id } });
+        if (!payment.orderId) {
+          const order = await createOrderRecord({
+            customerName: payment.customerName,
+            customerEmail: payment.customerEmail,
+            customerPhone: payment.customerPhone,
+            shippingAddress: payment.shippingAddress,
+            paymentMethod: payment.paymentMethod,
+            paymentStatus: "paid",
+            paymentReference: payment.reference,
+            cargoType: payment.cargoType,
+            items: parseOrderItems(payment.items),
+          });
+          await prisma.payment.update({ where: { id: payment.id }, data: { orderId: order.id } });
+        }
+      }
+      return res.json({ success: true });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Stripe webhook verification failed:", message);
+      return res.status(400).json({ error: "Invalid signature" });
+    }
+  }
+
+  // Generic provider webhook verification. Support HMAC-SHA256 verification using raw body when available.
+  const headerSignature = (req.headers["x-webhook-signature"] || req.headers["x-paystack-signature"] || req.headers["x-webhook-secret"] || "") as string;
+  let verified = false;
+  if (PAYMENT_WEBHOOK_SECRET && headerSignature) {
+    try {
+      const rawBody = (req as RequestWithRawBody).rawBody;
+      if (rawBody && rawBody.length) {
+        const expected = crypto.createHmac("sha256", PAYMENT_WEBHOOK_SECRET).update(rawBody).digest("hex");
+        if (headerSignature.includes(expected) || headerSignature === expected || headerSignature === `sha256=${expected}`) {
+          verified = true;
+        }
+      }
+      if (!verified && headerSignature === PAYMENT_WEBHOOK_SECRET) verified = true;
+    } catch (e) {
+      console.error("Webhook verification error", e);
+    }
+  }
+
+  if (process.env.NODE_ENV === "production" && PAYMENT_WEBHOOK_SECRET && !verified) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const { paymentId, status, providerReference } = req.body as {
+    paymentId?: string;
+    status?: "paid" | "failed";
+    providerReference?: string;
+  };
+
+  if (!paymentId || !status) {
+    return res.status(400).json({ error: "Missing paymentId or status" });
+  }
+
+  try {
+    const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return res.status(404).json({ error: "Not found" });
+
+    const newStatus = status === "paid" ? "paid" : "failed";
+    await prisma.payment.update({ where: { id: paymentId }, data: { status: newStatus, providerReference: providerReference || payment.providerReference } });
+
+    if (newStatus === "paid") {
+      const refreshed = await prisma.payment.findUnique({ where: { id: paymentId } });
+      if (refreshed && !refreshed.orderId) {
+        const order = await createOrderRecord({
+          customerName: refreshed.customerName,
+          customerEmail: refreshed.customerEmail,
+          customerPhone: refreshed.customerPhone,
+          shippingAddress: refreshed.shippingAddress,
+          paymentMethod: refreshed.paymentMethod,
+          paymentStatus: "paid",
+          paymentReference: refreshed.reference,
+          cargoType: refreshed.cargoType,
+          items: parseOrderItems(refreshed.items),
+        });
+        await prisma.payment.update({ where: { id: paymentId }, data: { orderId: order.id } });
+        return res.json({ success: true, id: paymentId, status: newStatus, orderId: order.id });
+      }
+    }
+
+    res.json({ success: true, id: paymentId, status: newStatus, orderId: payment.orderId });
+  } catch (e) {
+    console.error("Webhook update error", e);
+    res.status(500).json({ error: "Failed to process webhook" });
+  }
+});
+
+app.post("/api/orders", async (req, res) => {
+  const schema = z.object({
+    customerName: z.string().min(1),
+    customerEmail: z.string().email(),
+    customerPhone: z.string().min(5),
+    shippingAddress: z.string().min(5),
+    paymentMethod: z.enum(["cod", "orange_money", "afrimoney", "qmoney", "paystack"]),
+    paymentReference: z.string().min(2).optional(),
+    cargoType: z.string().optional(),
+    items: z.array(orderItemSchema).min(1),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const {
+    customerName,
+    customerEmail,
+    customerPhone,
+    shippingAddress,
+    paymentMethod,
+    paymentReference,
+    items,
+    cargoType,
+  } = parsed.data;
+
+  if (paymentMethod !== "cod") {
+    return res.status(400).json({ error: "Payment required. Use /api/payments/initiate for non-COD." });
+  }
+
+  try {
+    const paymentStatus = "pending";
+    const order = await createOrderRecord({
+      customerName,
+      customerEmail,
+      customerPhone,
+      shippingAddress,
+      paymentMethod,
+      paymentStatus,
+      paymentReference,
+      cargoType,
+      items,
+    });
+    res.status(201).json(order);
+  } catch (e) {
+    console.error("Create order error", e);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+app.get("/api/orders/track", async (req, res) => {
+  const schema = z.object({
+    orderId: z.string().min(4).optional(),
+    trackingNumber: z.string().min(4).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().min(5).optional(),
+  });
+
+  const parsed = schema.safeParse({
+    orderId: typeof req.query.orderId === "string" ? req.query.orderId : undefined,
+    trackingNumber: typeof req.query.trackingNumber === "string" ? req.query.trackingNumber : undefined,
+    email: typeof req.query.email === "string" ? req.query.email : undefined,
+    phone: typeof req.query.phone === "string" ? req.query.phone : undefined,
+  });
+
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
+  }
+
+  const { orderId, trackingNumber, email, phone } = parsed.data;
+  if (!orderId && !trackingNumber) {
+    return res.status(400).json({ error: "Provide orderId or trackingNumber" });
+  }
+
+  const hasStrongPair = Boolean(orderId && trackingNumber);
+  if (!hasStrongPair && !email && !phone) {
+    return res.status(400).json({ error: "Provide email or phone for verification" });
+  }
+
+  try {
+    const order = orderId
+      ? await prisma.order.findUnique({
+          where: { id: orderId },
+          include: {
+            items: true,
+            trackingEvents: { orderBy: { eventAt: "asc" } },
+          },
+        })
+      : await prisma.order.findFirst({
+          where: { trackingNumber: trackingNumber || undefined },
+          include: {
+            items: true,
+            trackingEvents: { orderBy: { eventAt: "asc" } },
+          },
+        });
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (trackingNumber && order.trackingNumber?.toLowerCase() !== trackingNumber.toLowerCase()) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (hasStrongPair) {
+      return res.json(buildTrackingPayload(order));
+    }
+
+    const emailMatches = email
+      ? order.customerEmail.toLowerCase() === email.toLowerCase()
+      : true;
+    const phoneMatches = phone
+      ? normalizePhone(order.customerPhone) === normalizePhone(phone)
+      : true;
+
+    if (!emailMatches || !phoneMatches) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    res.json(buildTrackingPayload(order));
+  } catch (e) {
+    console.error("Track order error", e);
+    res.status(500).json({ error: "Failed to fetch tracking" });
+  }
+});
+
+app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
+  try {
+    const schema = z.object({
+      email: z.string().email(),
+      password: z.string().min(6),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid credentials" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email },
+    });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const token = jwt.sign({ email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "12h" });
+    res.json({ token, role: user.role, email: user.email });
+  } catch (e) {
+    console.error("Login error", e);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
+  try {
+    const allOrders = await prisma.order.findMany();
+    const totalRevenue = allOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalOrders = allOrders.length;
+    const totalProducts = await prisma.product.count();
+    const uniqueEmails = new Set(allOrders.map((o) => o.customerEmail));
+    const totalCustomers = uniqueEmails.size;
+
+    const ordersByStatus = (
+      await Promise.all([
+        { status: "pending", count: await prisma.order.count({ where: { status: "pending" } }) },
+        { status: "processing", count: await prisma.order.count({ where: { status: "processing" } }) },
+        { status: "shipped", count: await prisma.order.count({ where: { status: "shipped" } }) },
+        { status: "delivered", count: await prisma.order.count({ where: { status: "delivered" } }) },
+        { status: "cancelled", count: await prisma.order.count({ where: { status: "cancelled" } }) },
+      ])
+    ).map((item) => ({ status: item.status, count: item.count }));
+
+    const revenueByMonth = Array.from({ length: 6 }).map((_, idx) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (5 - idx));
+      const month = date.toLocaleString("en-US", { month: "short" });
+      const revenue = allOrders
+        .filter((order) => new Date(order.createdAt).getMonth() === date.getMonth())
+        .reduce((sum, order) => sum + order.total, 0);
+      return { month, revenue };
+    });
+
+    const topProducts = (await prisma.product.findMany({ take: 5 })).map((product, index) => ({
+      name: product.name,
+      sales: Math.max(10, product.reviewCount || 10 + index * 5),
+    }));
+
+    const allCategories = await prisma.category.findMany();
+    const categoryRevenue = new Map<string, number>();
+    const orderItems = await prisma.orderItem.findMany();
+    
+    for (const item of orderItems) {
+      if (!item.productId) continue;
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      });
+      if (!product) continue;
+      const category = allCategories.find((c) => c.id === product.categoryId);
+      const name = category?.name || "Uncategorized";
+      categoryRevenue.set(name, (categoryRevenue.get(name) || 0) + item.price * item.quantity);
+    }
+    const topCategories = Array.from(categoryRevenue.entries()).map(([name, revenue]) => ({
+      name,
+      revenue,
+    }));
+
+    res.json({
+      totalRevenue,
+      totalOrders,
+      totalProducts,
+      totalCustomers,
+      revenueByMonth,
+      ordersByStatus,
+      topProducts,
+      topCategories,
+    });
+  } catch (e) {
+    console.error("Analytics error", e);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      include: { items: true, trackingEvents: { orderBy: { eventAt: "desc" } } },
+      orderBy: { createdAt: "desc" },
+    });
+    const result = orders.map((order) => ({
+      id: order.id,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      paymentReference: order.paymentReference,
+      items: order.items.map((item) => ({
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      total: order.total,
+      status: order.status,
+      createdAt: order.createdAt,
+      shippingAddress: order.shippingAddress,
+      cargoType: order.cargoType,
+      trackingNumber: order.trackingNumber,
+      trackingCarrier: order.trackingCarrier,
+      trackingUrl: order.trackingUrl,
+      currentLocation: order.currentLocation,
+      estimatedDelivery: order.estimatedDelivery,
+      shippedAt: order.shippedAt,
+      deliveredAt: order.deliveredAt,
+      lastTrackingUpdate: order.lastTrackingUpdate,
+      trackingEvents: order.trackingEvents.map((event) => ({
+        id: event.id,
+        status: event.status,
+        title: event.title,
+        message: event.message,
+        location: event.location,
+        source: event.source,
+        eventAt: event.eventAt,
+      })),
+    }));
+
+    res.json(result);
+  } catch (e) {
+    console.error("Fetch admin orders error", e);
+    res.status(500).json({ error: "Failed to fetch orders" });
+  }
+});
+
+app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
+  try {
+    const schema = z.object({
+      status: z.enum(ORDER_STATUSES),
+      location: z.string().min(2).max(160).optional(),
+      note: z.string().min(2).max(280).optional(),
+      trackingNumber: z.string().min(3).max(80).optional(),
+      trackingCarrier: z.string().min(2).max(80).optional(),
+      trackingUrl: z.string().url().optional(),
+      estimatedDelivery: z.string().datetime().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    const { id } = req.params;
+    const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+    if (!order) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const status = parsed.data.status;
+    const location = resolveStatusLocation(status, order.shippingAddress, parsed.data.location || order.currentLocation);
+    const updateData: Prisma.OrderUpdateInput = {
+      status,
+      currentLocation: location,
+      lastTrackingUpdate: new Date(),
+    };
+    if (parsed.data.trackingNumber) {
+      updateData.trackingNumber = parsed.data.trackingNumber.toUpperCase();
+    }
+    if (parsed.data.trackingCarrier) {
+      updateData.trackingCarrier = parsed.data.trackingCarrier;
+    }
+    if (parsed.data.trackingUrl) {
+      updateData.trackingUrl = parsed.data.trackingUrl;
+    }
+    if (parsed.data.estimatedDelivery) {
+      updateData.estimatedDelivery = new Date(parsed.data.estimatedDelivery);
+    }
+    if (status === "shipped") {
+      if (!order.shippedAt) updateData.shippedAt = new Date();
+      if (!order.trackingNumber && !parsed.data.trackingNumber) {
+        updateData.trackingNumber = createTrackingNumber();
+      }
+      if (!order.trackingCarrier && !parsed.data.trackingCarrier) {
+        updateData.trackingCarrier = "IMK Logistics";
+      }
+      if (!order.estimatedDelivery && !parsed.data.estimatedDelivery) {
+        updateData.estimatedDelivery = resolveEstimatedDelivery(order.cargoType);
+      }
+    }
+    if (status === "delivered") {
+      updateData.deliveredAt = new Date();
+      updateData.currentLocation = order.shippingAddress;
+    }
+
+    const updated = await prisma.order.update({
+      where: { id },
+      data: updateData,
+    });
+
+    await appendTrackingEvent({
+      orderId: id,
+      status,
+      location: resolveStatusLocation(status, order.shippingAddress, updated.currentLocation || location),
+      note: parsed.data.note,
+      source: "admin",
+    });
+
+    if (order.customerEmail && (updated.status === "shipped" || updated.status === "delivered")) {
+      const item = order.items[0];
+      const template =
+        updated.status === "shipped"
+          ? emailService.orderShippedTemplate({
+              id: order.id,
+              customerName: order.customerName,
+              productName: item?.productName || "Order Items",
+              quantity: item?.quantity || 1,
+              price: formatMoney(order.total),
+              date: order.createdAt,
+            })
+          : emailService.orderDeliveredTemplate({
+              id: order.id,
+              customerName: order.customerName,
+              productName: item?.productName || "Order Items",
+              quantity: item?.quantity || 1,
+              price: formatMoney(order.total),
+              date: order.createdAt,
+            });
+      await prisma.emailHistory.create({
+        data: emailService.createHistoryEntry(
+          order.customerEmail,
+          template.subject,
+          updated.status === "shipped" ? "orderShipped" : "orderDelivered",
+          "Sent"
+        ),
+      });
+    }
+
+    res.json({
+      id,
+      status: parsed.data.status,
+      trackingNumber: updated.trackingNumber,
+      trackingCarrier: updated.trackingCarrier,
+      currentLocation: updated.currentLocation,
+      estimatedDelivery: updated.estimatedDelivery,
+      lastTrackingUpdate: updated.lastTrackingUpdate,
+    });
+  } catch (e) {
+    console.error("Update order status error", e);
+    res.status(500).json({ error: "Failed to update order" });
+  }
+});
+
+app.patch("/api/admin/orders/:id/tracking", requireAdmin, async (req, res) => {
+  try {
+    const schema = z.object({
+      trackingNumber: z.string().min(3).max(80).optional(),
+      trackingCarrier: z.string().min(2).max(80).optional(),
+      trackingUrl: z.string().url().optional(),
+      currentLocation: z.string().min(2).max(160).optional(),
+      estimatedDelivery: z.string().datetime().optional(),
+      note: z.string().min(2).max(280).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid tracking payload", details: parsed.error.flatten() });
+    }
+
+    const hasPayload = Object.values(parsed.data).some((value) => value !== undefined);
+    if (!hasPayload) {
+      return res.status(400).json({ error: "No tracking fields provided" });
+    }
+
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: "Not found" });
+
+    const updateData: Prisma.OrderUpdateInput = {
+      lastTrackingUpdate: new Date(),
+    };
+    if (parsed.data.trackingNumber) updateData.trackingNumber = parsed.data.trackingNumber.toUpperCase();
+    if (parsed.data.trackingCarrier) updateData.trackingCarrier = parsed.data.trackingCarrier;
+    if (parsed.data.trackingUrl) updateData.trackingUrl = parsed.data.trackingUrl;
+    if (parsed.data.currentLocation) updateData.currentLocation = parsed.data.currentLocation;
+    if (parsed.data.estimatedDelivery) updateData.estimatedDelivery = new Date(parsed.data.estimatedDelivery);
+
+    const updated = await prisma.order.update({
+      where: { id: req.params.id },
+      data: updateData,
+    });
+
+    const eventStatus: OrderStatus = isOrderStatus(order.status) ? order.status : "pending";
+    const message = parsed.data.note || "Tracking details were updated by support.";
+    await prisma.orderTrackingEvent.create({
+      data: {
+        orderId: order.id,
+        status: eventStatus,
+        title: "Tracking Updated",
+        message,
+        location: parsed.data.currentLocation || order.currentLocation || undefined,
+        source: "admin",
+      },
+    });
+
+    res.json({
+      id: updated.id,
+      trackingNumber: updated.trackingNumber,
+      trackingCarrier: updated.trackingCarrier,
+      trackingUrl: updated.trackingUrl,
+      currentLocation: updated.currentLocation,
+      estimatedDelivery: updated.estimatedDelivery,
+      lastTrackingUpdate: updated.lastTrackingUpdate,
+    });
+  } catch (e) {
+    console.error("Update tracking error", e);
+    res.status(500).json({ error: "Failed to update tracking" });
+  }
+});
+
+app.get("/api/admin/pending-products", requireAdmin, async (_req, res) => {
+  try {
+    const pending = await prisma.pendingProduct.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(pending);
+  } catch (e) {
+    console.error("Fetch pending products error", e);
+    res.status(500).json({ error: "Failed to fetch pending products" });
+  }
+});
+
+app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, res) => {
+  try {
+    const pending = await prisma.pendingProduct.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!pending) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    
+    const category = await ensureCategory(pending.category);
+    await prisma.product.create({
+      data: {
+        name: pending.name,
+        description: pending.description,
+        price: pending.price,
+        image: pending.image,
+        images: [pending.image],
+        categoryId: category.id,
+        rating: 4.5,
+        reviewCount: 0,
+        inStock: true,
+        freeShipping: false,
+        badge: "New",
+        sku: `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
+        stock: 20,
+        lowStockThreshold: 10,
+        lastRestocked: new Date(),
+        sellerName: pending.sellerName,
+        sellerEmail: pending.sellerEmail,
+        country: "UAE",
+        status: "active",
+        createdAt: new Date(),
+      },
+    });
+
+    await prisma.pendingProduct.update({
+      where: { id: pending.id },
+      data: { status: "approved" },
+    });
+
+    if (pending.sellerEmail) {
+      const email = emailService.welcomeSellerTemplate(pending.sellerName);
+      await prisma.emailHistory.create({
+        data: emailService.createHistoryEntry(pending.sellerEmail, email.subject, "welcomeSeller", "Sent"),
+      });
+    }
+
+    res.json({ id: pending.id, status: "approved" });
+  } catch (e) {
+    console.error("Approve product error", e);
+    res.status(500).json({ error: "Failed to approve product" });
+  }
+});
+
+app.post("/api/admin/pending-products/:id/reject", requireAdmin, async (req, res) => {
+  try {
+    const pending = await prisma.pendingProduct.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!pending) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    
+    await prisma.pendingProduct.update({
+      where: { id: pending.id },
+      data: { status: "rejected" },
+    });
+    
+    res.json({ id: pending.id, status: "rejected" });
+  } catch (e) {
+    console.error("Reject product error", e);
+    res.status(500).json({ error: "Failed to reject product" });
+  }
+});
+
+app.get("/api/admin/products", requireAdmin, async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany({
+      include: { category: true },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(
+      products.map((product) => ({
+        ...product,
+        image: product.images?.length ? product.images[0] : product.image,
+        images: product.images?.length ? product.images : [product.image],
+        sku: product.sku || `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
+        stock: product.stock ?? 0,
+        lowStockThreshold: product.lowStockThreshold ?? 10,
+        lastRestocked: product.lastRestocked || product.createdAt,
+        status: product.status || "active",
+        category: product.category?.name || "Uncategorized",
+      }))
+    );
+  } catch (e) {
+    console.error("Fetch admin products error", e);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+});
+
+app.post("/api/admin/products", requireAdmin, async (req, res) => {
+  const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
+    message: "Image must be a URL or data URI",
+  });
+  const imagesSchema = z.array(imageSchema).min(1).max(10);
+  const schema = z
+    .object({
+      name: z.string().min(1),
+      description: z.string().min(1),
+      price: z.number().min(0),
+      originalPrice: z.number().min(0).optional().nullable(),
+      category: z.string().min(1),
+      image: imageSchema.optional(),
+      images: imagesSchema.optional(),
+      rating: z.number().min(0).max(5).optional(),
+      reviewCount: z.number().int().min(0).optional(),
+      inStock: z.boolean().optional(),
+      freeShipping: z.boolean().optional(),
+      badge: z.string().min(1).optional().nullable(),
+      sku: z.string().min(1).optional(),
+      stock: z.number().int().min(0).optional(),
+      lowStockThreshold: z.number().int().min(0).optional(),
+      sellerName: z.string().optional().nullable(),
+      sellerEmail: z.string().email().optional().nullable(),
+      country: z.string().optional(),
+      status: z.enum(["active", "inactive"]).optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (!data.images?.length && !data.image) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["images"], message: "At least one image is required" });
+      }
+    });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  try {
+    const category = await ensureCategory(parsed.data.category);
+    const createdAt = new Date();
+    const stock = parsed.data.stock ?? 0;
+    const images = parsed.data.images ?? (parsed.data.image ? [parsed.data.image] : []);
+    const sku = parsed.data.sku ?? `IMK-${Math.floor(Math.random() * 9000 + 1000)}`;
+    const product = await prisma.product.create({
+      data: {
+        name: parsed.data.name,
+        description: parsed.data.description,
+        price: parsed.data.price,
+        originalPrice: parsed.data.originalPrice ?? undefined,
+        image: images[0],
+        images,
+        categoryId: category.id,
+        rating: parsed.data.rating ?? 4.5,
+        reviewCount: parsed.data.reviewCount ?? 0,
+        inStock: parsed.data.inStock ?? stock > 0,
+        freeShipping: parsed.data.freeShipping ?? false,
+        badge: parsed.data.badge ?? "New",
+        sku,
+        stock,
+        lowStockThreshold: parsed.data.lowStockThreshold ?? 10,
+        lastRestocked: createdAt,
+        sellerName: parsed.data.sellerName ?? undefined,
+        sellerEmail: parsed.data.sellerEmail ?? undefined,
+        country: parsed.data.country ?? undefined,
+        status: parsed.data.status ?? "active",
+        createdAt,
+      },
+    });
+    res.status(201).json(product);
+  } catch (e) {
+    console.error("Create product error", e);
+    res.status(500).json({ error: "Failed to create product" });
+  }
+});
+
+app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
+    message: "Image must be a URL or data URI",
+  });
+  const imagesSchema = z.array(imageSchema).min(1).max(10);
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    price: z.number().min(0).optional(),
+    originalPrice: z.number().min(0).optional().nullable(),
+    category: z.string().min(1).optional(),
+    image: imageSchema.optional(),
+    images: imagesSchema.optional(),
+    rating: z.number().min(0).max(5).optional(),
+    reviewCount: z.number().int().min(0).optional(),
+    inStock: z.boolean().optional(),
+    freeShipping: z.boolean().optional(),
+    badge: z.string().min(1).optional().nullable(),
+    sku: z.string().min(1).optional(),
+    stock: z.number().int().min(0).optional(),
+    lowStockThreshold: z.number().int().min(0).optional(),
+    sellerName: z.string().optional().nullable(),
+    sellerEmail: z.string().email().optional().nullable(),
+    country: z.string().optional(),
+    status: z.enum(["active", "inactive"]).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const { category, images, image, ...rest } = parsed.data;
+    const updateData: Prisma.ProductUncheckedUpdateInput = { ...rest };
+    if (category) {
+      const ensured = await ensureCategory(category);
+      updateData.categoryId = ensured.id;
+    }
+    if (images !== undefined) {
+      updateData.images = images;
+      updateData.image = images[0];
+    } else if (image !== undefined) {
+      const existingImages = existing.images?.length ? existing.images : [existing.image];
+      updateData.images = [image, ...existingImages.slice(1)];
+      updateData.image = image;
+    }
+    if (parsed.data.stock !== undefined) {
+      updateData.inStock = parsed.data.stock > 0;
+      updateData.lastRestocked = new Date();
+    }
+    const updated = await prisma.product.update({ where: { id: req.params.id }, data: updateData });
+    res.json(updated);
+  } catch (e) {
+    console.error("Update product error", e);
+    res.status(500).json({ error: "Failed to update product" });
+  }
+});
+
+app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
+  try {
+    await prisma.product.delete({ where: { id: req.params.id } });
+    res.json({ id: req.params.id });
+  } catch (e) {
+    console.error("Delete product error", e);
+    res.status(404).json({ error: "Not found" });
+  }
+});
+
+app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany({ include: { category: true } });
+    res.json(
+      products.map((product) => ({
+        id: product.id,
+        productId: product.id,
+        productName: product.name,
+        sku: product.sku || `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
+        stock: product.stock ?? 0,
+        lowStockThreshold: product.lowStockThreshold ?? 10,
+        lastRestocked: product.lastRestocked || product.createdAt,
+        category: product.category?.name || "Uncategorized",
+      }))
+    );
+  } catch (e) {
+    console.error("Fetch inventory error", e);
+    res.status(500).json({ error: "Failed to fetch inventory" });
+  }
+});
+
+app.patch("/api/admin/inventory/:id", requireAdmin, async (req, res) => {
+  const schema = z.object({ stock: z.number().int().min(0) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const updated = await prisma.product.update({ where: { id: req.params.id }, data: { stock: parsed.data.stock, inStock: parsed.data.stock > 0, lastRestocked: new Date() } });
+    res.json({ id: updated.id, stock: updated.stock });
+  } catch (e) {
+    console.error("Update inventory error", e);
+    res.status(404).json({ error: "Not found" });
+  }
+});
+
+app.get("/api/admin/categories", requireAdmin, async (_req, res) => {
+  try {
+    const categories = await prisma.category.findMany({ orderBy: { name: "asc" } });
+    res.json(categories);
+  } catch (e) {
+    console.error("Fetch admin categories error", e);
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+app.post("/api/admin/categories", requireAdmin, async (req, res) => {
+  const schema = z.object({ name: z.string().min(1), image: z.string().url().optional() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const category = await ensureCategory(parsed.data.name);
+    if (parsed.data.image) {
+      await prisma.category.update({ where: { id: category.id }, data: { image: parsed.data.image } });
+    }
+    const fresh = await prisma.category.findUnique({ where: { id: category.id } });
+    res.status(201).json(fresh);
+  } catch (e) {
+    console.error("Create category error", e);
+    res.status(500).json({ error: "Failed to create category" });
+  }
+});
+
+app.delete("/api/admin/categories/:id", requireAdmin, async (req, res) => {
+  try {
+    const toRemove = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!toRemove) return res.status(404).json({ error: "Not found" });
+    const uncategorized = await ensureCategory("Uncategorized");
+    await prisma.product.updateMany({ where: { categoryId: toRemove.id }, data: { categoryId: uncategorized.id } });
+    await prisma.category.delete({ where: { id: req.params.id } });
+    res.json({ id: req.params.id });
+  } catch (e) {
+    console.error("Delete category error", e);
+    res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
+app.get("/api/admin/email-history", requireAdmin, async (_req, res) => {
+  try {
+    const history = await prisma.emailHistory.findMany({ orderBy: { createdAt: "desc" } });
+    res.json(history);
+  } catch (e) {
+    console.error("Fetch email history error", e);
+    res.status(500).json({ error: "Failed to fetch email history" });
+  }
+});
+
+app.post("/api/admin/email/send-test", requireAdmin, async (req, res) => {
+  const schema = z.object({ to: z.string().email().optional() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  const to = parsed.data.to || SUPPORT_EMAIL;
+  const email = emailService.orderConfirmationTemplate({
+    id: createOrderId(),
+    customerName: "Test Customer",
+    productName: "Test Product",
+    quantity: 1,
+    price: formatMoney(99.99),
+    date: new Date().toISOString(),
+  });
+  try {
+    await prisma.emailHistory.create({ data: emailService.createHistoryEntry(to, email.subject, "orderConfirmation", "Sent") });
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Send test email error", e);
+    res.status(500).json({ error: "Failed to send test email" });
+  }
+});
+
+app.post("/api/admin/email/low-stock-alerts", requireAdmin, async (_req, res) => {
+  try {
+    const products = await prisma.product.findMany();
+    const filtered = products.filter((p) => p.stock <= p.lowStockThreshold);
+    await Promise.all(
+      filtered.map(async (product) => {
+        const category = await prisma.category.findUnique({ where: { id: product.categoryId } });
+        const email = emailService.lowStockAlertTemplate({
+          name: product.name,
+          quantity: product.stock,
+          category: category?.name || "Uncategorized",
+          price: formatMoney(product.price),
+        });
+        await prisma.emailHistory.create({ data: emailService.createHistoryEntry(SUPPORT_EMAIL, email.subject, "lowStockAlert", "Sent") });
+      })
+    );
+    res.json({ sent: filtered.length });
+  } catch (e) {
+    console.error("Low stock alerts error", e);
+    res.status(500).json({ error: "Failed to send low stock alerts" });
+  }
+});
+
+// Global error handler to avoid leaking stack traces in production
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  if (process.env.NODE_ENV === "production") {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+  if (err instanceof Error) {
+    return res.status(500).json({ error: err.message || "Internal error", stack: err.stack });
+  }
+  return res.status(500).json({ error: "Internal error" });
+});
+
+const port = Number(process.env.API_PORT || process.env.PORT || 5050);
+app.listen(port, () => {
+  console.log(`API listening on http://localhost:${port}`);
+});

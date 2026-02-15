@@ -1,0 +1,15 @@
+{
+  "name": "IMK-MARKET",
+  "short_name": "IMK-MARKET",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B2C4A",
+  "theme_color": "#0B2C4A",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48 72x72 96x96 144x144 192x192",
+      "type": "image/x-icon"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="320" viewBox="0 0 1024 320">
+  <rect width="1024" height="320" fill="#ffffff" />
+  <g transform="translate(70 70)">
+    <rect x="0" y="90" width="160" height="70" rx="12" fill="none" stroke="#2C2F9C" stroke-width="10" />
+    <line x1="20" y1="90" x2="45" y2="40" stroke="#2C2F9C" stroke-width="10" stroke-linecap="round" />
+    <line x1="45" y1="40" x2="110" y2="40" stroke="#2C2F9C" stroke-width="10" stroke-linecap="round" />
+    <circle cx="40" cy="180" r="16" fill="#F36C21" />
+    <circle cx="120" cy="180" r="16" fill="#F36C21" />
+    <path d="M120 5 C145 10, 160 25, 165 45" fill="none" stroke="#F36C21" stroke-width="10" stroke-linecap="round" />
+    <path d="M120 25 C135 30, 145 40, 150 55" fill="none" stroke="#F36C21" stroke-width="8" stroke-linecap="round" />
+  </g>
+  <text x="270" y="190" font-family="Arial, sans-serif" font-size="120" font-weight="700" fill="#2C2F9C">IMK</text>
+  <text x="520" y="190" font-family="Arial, sans-serif" font-size="120" font-weight="700" fill="#F36C21">-Market</text>
+</svg>

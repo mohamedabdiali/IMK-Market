@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">IMK-MARKET</string>
+    <string name="title_activity_main">IMK-MARKET</string>
+    <string name="package_name">imk.ecommerce.market</string>
+    <string name="custom_url_scheme">imk.ecommerce.market</string>
+</resources>
