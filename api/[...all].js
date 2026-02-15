@@ -1,3 +1,5 @@
-const app = require("../server/mock-api-full.cjs");
+import app from "../server/mock-api-full.cjs";
 
-module.exports = (req, res) => app(req, res);
+export default function handler(req, res) {
+  return app(req, res);
+}
