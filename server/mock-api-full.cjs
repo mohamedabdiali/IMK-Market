@@ -69,6 +69,31 @@ const normalizeCustomerPhone = (value) => {
 };
 const hashPassword = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const createTrackingNumber = () => `TRK-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
+const resolveOrderTrackingId = (order) => order.trackingNumber || order.id;
+const canProceedWithOrder = (order) => order.paymentMethod === 'cod' || order.paymentStatus === 'paid';
+const requiresManualProofApproval = (paymentMethod) =>
+  paymentMethod === 'orange_money' || paymentMethod === 'afrimoney' || paymentMethod === 'qmoney';
+const parseStoredPaymentItems = (value) => {
+  if (Array.isArray(value)) {
+    return { orderItems: value };
+  }
+  if (!value || typeof value !== 'object') {
+    return { orderItems: [] };
+  }
+  const orderItems = Array.isArray(value.orderItems) ? value.orderItems : [];
+  const proofImage = typeof value.proofImage === 'string' ? value.proofImage : undefined;
+  const proofVideo = typeof value.proofVideo === 'string' ? value.proofVideo : undefined;
+  const proofSubmittedAt = typeof value.proofSubmittedAt === 'string' ? value.proofSubmittedAt : undefined;
+  const proofApprovedAt = typeof value.proofApprovedAt === 'string' ? value.proofApprovedAt : undefined;
+  return { orderItems, proofImage, proofVideo, proofSubmittedAt, proofApprovedAt };
+};
+const buildStoredPaymentItems = (data) => ({
+  orderItems: data.orderItems,
+  ...(data.proofImage ? { proofImage: data.proofImage } : {}),
+  ...(data.proofVideo ? { proofVideo: data.proofVideo } : {}),
+  ...(data.proofSubmittedAt ? { proofSubmittedAt: data.proofSubmittedAt } : {}),
+  ...(data.proofApprovedAt ? { proofApprovedAt: data.proofApprovedAt } : {}),
+});
 
 const resolveEstimatedDeliveryIso = (cargoType, fromIso) => {
   const base = new Date(fromIso || nowIso());
@@ -138,6 +163,30 @@ const ensureTrackingState = (order) => {
   return order;
 };
 
+const markOrderPaymentApproved = (order, source = 'admin', note = 'Payment approved. Your order is now moving to processing.') => {
+  if (!order) return null;
+  const shouldMoveToProcessing = order.status === 'pending';
+  const shouldMarkPaid = order.paymentStatus !== 'paid';
+  if (!shouldMoveToProcessing && !shouldMarkPaid) {
+    return order;
+  }
+  if (shouldMoveToProcessing) {
+    order.status = 'processing';
+  }
+  order.paymentStatus = 'paid';
+  order.currentLocation = resolveStatusLocation(order.status, order.shippingAddress, order.currentLocation);
+  order.lastTrackingUpdate = nowIso();
+  addTrackingEvent(order, {
+    status: ORDER_STATUSES.includes(order.status) ? order.status : 'processing',
+    title: 'Payment Approved',
+    message: note,
+    location: order.currentLocation,
+    source,
+    eventAt: order.lastTrackingUpdate,
+  });
+  return order;
+};
+
 const toTrackingResponse = (order) => {
   const hydrated = ensureTrackingState(order);
   const progressMap = {
@@ -152,8 +201,11 @@ const toTrackingResponse = (order) => {
     .sort((a, b) => new Date(a.eventAt) - new Date(b.eventAt));
   return {
     id: hydrated.id,
+    orderTrackingId: resolveOrderTrackingId(hydrated),
     status: hydrated.status,
+    paymentMethod: hydrated.paymentMethod,
     paymentStatus: hydrated.paymentStatus,
+    approvedToProceed: canProceedWithOrder(hydrated),
     total: hydrated.total,
     cargoType: hydrated.cargoType,
     trackingNumber: hydrated.trackingNumber,
@@ -651,31 +703,42 @@ app.post('/api/orders', (req, res) => {
 });
 
 app.get('/api/orders/track', (req, res) => {
+  const orderTrackingId = typeof req.query.orderTrackingId === 'string' ? req.query.orderTrackingId.trim().toUpperCase() : '';
   const orderId = typeof req.query.orderId === 'string' ? req.query.orderId.trim() : '';
   const trackingNumber =
     typeof req.query.trackingNumber === 'string' ? req.query.trackingNumber.trim().toUpperCase() : '';
   const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
   const phone = typeof req.query.phone === 'string' ? req.query.phone.trim() : '';
 
-  if (!orderId && !trackingNumber) {
-    return res.status(400).json({ error: 'Provide orderId or trackingNumber' });
+  if (!orderTrackingId && !orderId && !trackingNumber) {
+    return res.status(400).json({ error: 'Provide orderTrackingId, orderId, or trackingNumber' });
   }
-  const hasStrongPair = Boolean(orderId && trackingNumber);
-  if (!hasStrongPair && !email && !phone) {
+  const hasStrongReference = Boolean(orderTrackingId) || Boolean(orderId && trackingNumber);
+  if (!hasStrongReference && !email && !phone) {
     return res.status(400).json({ error: 'Provide email or phone for verification' });
   }
 
   const order = orders.find((item) => {
+    if (orderTrackingId && (item.id.toUpperCase() === orderTrackingId || (item.trackingNumber || '').toUpperCase() === orderTrackingId)) {
+      return true;
+    }
     if (orderId && item.id === orderId) return true;
     if (trackingNumber && (item.trackingNumber || '').toUpperCase() === trackingNumber) return true;
     return false;
   });
   if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (orderTrackingId) {
+    const matchesTrackingId = order.id.toUpperCase() === orderTrackingId || (order.trackingNumber || '').toUpperCase() === orderTrackingId;
+    if (!matchesTrackingId) return res.status(404).json({ error: 'Order not found' });
+  }
+  if (orderId && order.id !== orderId) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
   if (trackingNumber && (order.trackingNumber || '').toUpperCase() !== trackingNumber) {
     return res.status(404).json({ error: 'Order not found' });
   }
 
-  if (hasStrongPair) {
+  if (hasStrongReference) {
     return res.json(toTrackingResponse(order));
   }
 
@@ -729,6 +792,45 @@ app.post('/api/payments/initiate', (req, res) => {
   const createdAt = nowIso();
   const reference = `IMK-${id.replace('PAY-', '')}`;
   const method = (paymentMethod || 'paystack').toString();
+  const hasProof = Boolean(paymentProofImage || paymentProofVideo);
+  const storedItems = buildStoredPaymentItems({
+    orderItems: normalizedItems,
+    ...(paymentProofImage ? { proofImage: paymentProofImage.toString() } : {}),
+    ...(paymentProofVideo ? { proofVideo: paymentProofVideo.toString() } : {}),
+    ...(hasProof ? { proofSubmittedAt: createdAt } : {}),
+  });
+
+  const provisionalOrder = {
+    id: `ORD-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+    customerName,
+    customerEmail,
+    customerPhone,
+    items: normalizedItems,
+    total: Math.round(amount * 100) / 100,
+    status: 'pending',
+    paymentMethod: method,
+    paymentStatus: 'initialized',
+    paymentReference: reference,
+    createdAt,
+    shippingAddress,
+    cargoType: cargoType || undefined,
+    trackingNumber: createTrackingNumber(),
+    trackingCarrier: 'IMK Logistics',
+    trackingUrl: undefined,
+    currentLocation: resolveStatusLocation('pending', shippingAddress),
+    estimatedDelivery: resolveEstimatedDeliveryIso(cargoType, createdAt),
+    shippedAt: undefined,
+    deliveredAt: undefined,
+    lastTrackingUpdate: createdAt,
+    trackingEvents: [],
+  };
+  addTrackingEvent(provisionalOrder, {
+    status: 'pending',
+    location: provisionalOrder.currentLocation,
+    source: 'system',
+    eventAt: createdAt,
+  });
+  orders.unshift(provisionalOrder);
 
   const record = {
     id,
@@ -742,19 +844,21 @@ app.post('/api/payments/initiate', (req, res) => {
     customerPhone,
     shippingAddress,
     cargoType: cargoType || undefined,
-    paymentProofImage: paymentProofImage ? paymentProofImage.toString() : undefined,
-    paymentProofVideo: paymentProofVideo ? paymentProofVideo.toString() : undefined,
-    items: normalizedItems,
-    orderId: undefined,
+    items: storedItems,
+    orderId: provisionalOrder.id,
     createdAt,
     updatedAt: createdAt,
   };
   payments.unshift(record);
 
-  const instructions = [
-    'Complete the payment using your selected method.',
-    'Then refresh the status to confirm your order.',
-  ];
+  const instructions =
+    method === 'paystack'
+      ? ['Complete payment in the secure card window.', 'After confirmation, your order will be approved for processing.']
+      : [
+          `Send payment to ${process.env.SUPPORT_PHONE || '+232-76-123-456'} (${process.env.BRAND_NAME || 'IMK-MARKET'}).`,
+          `Use reference: ${reference}.`,
+          'Upload your payment proof for admin approval.',
+        ];
 
   res.status(201).json({
     id: record.id,
@@ -767,57 +871,17 @@ app.post('/api/payments/initiate', (req, res) => {
     requiresRedirect: record.paymentMethod === 'paystack',
     paymentUrl: record.paymentMethod === 'paystack' ? 'https://example.com/pay' : null,
     orderId: record.orderId,
+    orderTrackingId: resolveOrderTrackingId(provisionalOrder),
     updatedAt: record.updatedAt,
-    proofUploaded: Boolean(record.paymentProofImage || record.paymentProofVideo),
+    proofUploaded: hasProof,
   });
 });
 
 app.get('/api/payments/:id', (req, res) => {
   const payment = payments.find((p) => p.id === req.params.id);
   if (!payment) return res.status(404).json({ error: 'Not found' });
-
-  // Auto-confirm payments after ~10s for demo purposes.
-  if (payment.status === 'pending') {
-    const ageMs = Date.now() - new Date(payment.createdAt).getTime();
-    if (ageMs > 10_000) {
-      payment.status = 'paid';
-      payment.updatedAt = nowIso();
-      if (!payment.orderId) {
-        const order = {
-          id: `ORD-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
-          customerName: payment.customerName,
-          customerEmail: payment.customerEmail,
-          customerPhone: payment.customerPhone,
-          items: payment.items,
-          total: payment.amount,
-          status: 'pending',
-          paymentMethod: payment.paymentMethod,
-          paymentStatus: 'paid',
-          paymentReference: payment.reference,
-          createdAt: payment.updatedAt,
-          shippingAddress: payment.shippingAddress,
-          cargoType: payment.cargoType,
-          trackingNumber: createTrackingNumber(),
-          trackingCarrier: 'IMK Logistics',
-          trackingUrl: undefined,
-          currentLocation: resolveStatusLocation('pending', payment.shippingAddress),
-          estimatedDelivery: resolveEstimatedDeliveryIso(payment.cargoType, payment.updatedAt),
-          shippedAt: undefined,
-          deliveredAt: undefined,
-          lastTrackingUpdate: payment.updatedAt,
-          trackingEvents: [],
-        };
-        addTrackingEvent(order, {
-          status: 'pending',
-          location: order.currentLocation,
-          source: 'system',
-          eventAt: payment.updatedAt,
-        });
-        orders.unshift(order);
-        payment.orderId = order.id;
-      }
-    }
-  }
+  const order = payment.orderId ? orders.find((item) => item.id === payment.orderId) : null;
+  const paymentItems = parseStoredPaymentItems(payment.items);
 
   res.json({
     id: payment.id,
@@ -827,9 +891,66 @@ app.get('/api/payments/:id', (req, res) => {
     reference: payment.reference,
     paymentMethod: payment.paymentMethod,
     orderId: payment.orderId,
-    trackingNumber: payment.orderId ? orders.find((o) => o.id === payment.orderId)?.trackingNumber || null : null,
+    orderTrackingId: order ? resolveOrderTrackingId(order) : payment.orderId || null,
+    trackingNumber: order?.trackingNumber || null,
+    providerReference: payment.providerReference || null,
     updatedAt: payment.updatedAt,
-    proofUploaded: Boolean(payment.paymentProofImage || payment.paymentProofVideo),
+    items: payment.items || null,
+    proofUploaded: Boolean(paymentItems.proofImage || paymentItems.proofVideo),
+    paymentProofImage: paymentItems.proofImage || null,
+    paymentProofVideo: paymentItems.proofVideo || null,
+    paymentProofSubmittedAt: paymentItems.proofSubmittedAt || null,
+    paymentProofApprovedAt: paymentItems.proofApprovedAt || null,
+    orderStatus: order?.status || null,
+    orderPaymentStatus: order?.paymentStatus || null,
+    approvedToProceed: order ? canProceedWithOrder(order) : false,
+  });
+});
+
+app.patch('/api/payments/:id/proof', (req, res) => {
+  const payment = payments.find((p) => p.id === req.params.id);
+  if (!payment) return res.status(404).json({ error: 'Not found' });
+
+  const proofImage = typeof req.body?.proofImage === 'string' ? req.body.proofImage : undefined;
+  const proofVideo = typeof req.body?.proofVideo === 'string' ? req.body.proofVideo : undefined;
+  if (!proofImage && !proofVideo) {
+    return res.status(400).json({ error: 'At least one proof file is required' });
+  }
+  if (proofImage && !isImagePayload(proofImage)) {
+    return res.status(400).json({ error: 'Invalid proof image' });
+  }
+  if (proofVideo && !isVideoPayload(proofVideo)) {
+    return res.status(400).json({ error: 'Invalid proof video' });
+  }
+
+  const parsedItems = parseStoredPaymentItems(payment.items);
+  const submittedAt = nowIso();
+  payment.items = buildStoredPaymentItems({
+    orderItems: parsedItems.orderItems,
+    proofImage: proofImage || parsedItems.proofImage,
+    proofVideo: proofVideo || parsedItems.proofVideo,
+    proofSubmittedAt: submittedAt,
+  });
+  payment.updatedAt = submittedAt;
+  if (payment.status === 'failed') {
+    payment.status = 'pending';
+  }
+
+  const order = payment.orderId ? orders.find((item) => item.id === payment.orderId) : null;
+  if (order) {
+    order.paymentStatus = 'initialized';
+    order.status = 'pending';
+    order.currentLocation = resolveStatusLocation('pending', order.shippingAddress, order.currentLocation);
+    order.lastTrackingUpdate = submittedAt;
+  }
+
+  return res.json({
+    id: payment.id,
+    status: payment.status,
+    proofUploaded: true,
+    paymentProofSubmittedAt: submittedAt,
+    orderId: payment.orderId,
+    orderTrackingId: order ? resolveOrderTrackingId(order) : payment.orderId || null,
   });
 });
 
@@ -1008,7 +1129,69 @@ app.get('/api/admin/orders', requireAdmin, (_req, res) => {
     .slice()
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((order) => ensureTrackingState(order));
-  res.json(sorted);
+  const paymentByOrderId = new Map();
+  for (const payment of payments.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))) {
+    if (!payment.orderId || paymentByOrderId.has(payment.orderId)) continue;
+    paymentByOrderId.set(payment.orderId, payment);
+  }
+  const payload = sorted.map((order) => {
+    const payment = paymentByOrderId.get(order.id);
+    const paymentItems = payment ? parseStoredPaymentItems(payment.items) : { orderItems: [] };
+    return {
+      ...order,
+      orderTrackingId: resolveOrderTrackingId(order),
+      paymentId: payment?.id || null,
+      paymentProofImage: paymentItems.proofImage || null,
+      paymentProofVideo: paymentItems.proofVideo || null,
+      paymentProofSubmittedAt: paymentItems.proofSubmittedAt || null,
+      paymentProofApprovedAt: paymentItems.proofApprovedAt || null,
+    };
+  });
+  res.json(payload);
+});
+
+app.post('/api/admin/orders/:id/approve-payment', requireAdmin, (req, res) => {
+  const order = orders.find((o) => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Not found' });
+  if (order.paymentMethod === 'cod') {
+    return res.status(400).json({ error: 'COD orders do not require payment approval' });
+  }
+
+  const payment = payments
+    .slice()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .find((item) => item.orderId === order.id);
+  if (!payment) {
+    return res.status(404).json({ error: 'Linked payment record not found' });
+  }
+
+  const paymentItems = parseStoredPaymentItems(payment.items);
+  if (requiresManualProofApproval(order.paymentMethod) && !paymentItems.proofImage && !paymentItems.proofVideo) {
+    return res.status(400).json({ error: 'Payment proof image or video is required before approval' });
+  }
+
+  const approvedAt = nowIso();
+  payment.status = 'paid';
+  payment.updatedAt = approvedAt;
+  payment.items = buildStoredPaymentItems({
+    orderItems: paymentItems.orderItems,
+    ...(paymentItems.proofImage ? { proofImage: paymentItems.proofImage } : {}),
+    ...(paymentItems.proofVideo ? { proofVideo: paymentItems.proofVideo } : {}),
+    ...(paymentItems.proofSubmittedAt ? { proofSubmittedAt: paymentItems.proofSubmittedAt } : {}),
+    ...(paymentItems.proofImage || paymentItems.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+  });
+
+  markOrderPaymentApproved(order, 'admin', 'Payment approved by admin. Your order is now moving to processing.');
+
+  return res.json({
+    success: true,
+    id: order.id,
+    orderTrackingId: resolveOrderTrackingId(order),
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    paymentId: payment.id,
+    paymentProofApprovedAt: paymentItems.proofImage || paymentItems.proofVideo ? approvedAt : null,
+  });
 });
 
 app.patch('/api/admin/orders/:id/status', requireAdmin, (req, res) => {

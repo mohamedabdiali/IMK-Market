@@ -56,7 +56,16 @@ type PaymentSession = {
   paymentUrl?: string | null;
   requiresRedirect?: boolean;
   orderId?: string;
+  orderTrackingId?: string | null;
   trackingNumber?: string | null;
+  proofUploaded?: boolean;
+  paymentProofImage?: string | null;
+  paymentProofVideo?: string | null;
+  paymentProofSubmittedAt?: string | null;
+  paymentProofApprovedAt?: string | null;
+  orderStatus?: string | null;
+  orderPaymentStatus?: string | null;
+  approvedToProceed?: boolean;
   updatedAt?: string;
 };
 
@@ -72,31 +81,31 @@ const paymentGuides: Record<string, { title: string; steps: string[] }> = {
     title: "Orange Money",
     steps: [
       "Send payment to +23272213586 (IMK-MARKET).",
-      "A payment reference will be generated after you proceed.",
-      "Your order will be created once payment is confirmed.",
+      "A payment reference and order tracking ID are generated after submission.",
+      "Upload payment proof now or after submission for admin approval.",
     ],
   },
   afrimoney: {
     title: "Africell Money",
     steps: [
       "Send payment to +232-76-123-456 (IMK-MARKET).",
-      "A payment reference will be generated after you proceed.",
-      "Your order will be created once payment is confirmed.",
+      "A payment reference and order tracking ID are generated after submission.",
+      "Upload payment proof now or after submission for admin approval.",
     ],
   },
   qmoney: {
     title: "QMoney",
     steps: [
       "Send payment to +232-76-123-456 (IMK-MARKET).",
-      "A payment reference will be generated after you proceed.",
-      "Your order will be created once payment is confirmed.",
+      "A payment reference and order tracking ID are generated after submission.",
+      "Upload payment proof now or after submission for admin approval.",
     ],
   },
   paystack: {
     title: "Card / Bank Payment",
     steps: [
       "Proceed to payment to generate a secure card payment link.",
-      "Your order will be created once payment is confirmed.",
+      "Your order tracking ID is generated immediately after submission.",
     ],
   },
 };
@@ -112,7 +121,14 @@ export default function Order() {
     paymentMethod: "cod",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderResult, setOrderResult] = useState<{ id: string; total: number; paymentStatus: string; trackingNumber?: string | null } | null>(null);
+  const [isSubmittingProof, setIsSubmittingProof] = useState(false);
+  const [orderResult, setOrderResult] = useState<{
+    id: string;
+    orderTrackingId?: string | null;
+    total: number;
+    paymentStatus: string;
+    trackingNumber?: string | null;
+  } | null>(null);
   const [paymentState, setPaymentState] = useState<PaymentSession | null>(null);
   const [paymentProofImage, setPaymentProofImage] = useState("");
   const [paymentProofImageName, setPaymentProofImageName] = useState("");
@@ -163,13 +179,14 @@ export default function Order() {
       try {
         const latest = (await api.getPaymentStatus(paymentState.id)) as PaymentSession;
         setPaymentState((prev) => ({ ...(prev || paymentState), ...latest }));
-        const paid = latest.status === "paid";
+        const paid = latest.status === "paid" || Boolean(latest.approvedToProceed);
         const orderId = latest.orderId;
         if (paid && orderId) {
           setOrderResult({
             id: orderId,
+            orderTrackingId: latest.orderTrackingId || latest.trackingNumber || orderId,
             total: latest.amount,
-            paymentStatus: "paid",
+            paymentStatus: latest.orderPaymentStatus || "paid",
             trackingNumber: latest.trackingNumber || null,
           });
           clearCart();
@@ -313,6 +330,48 @@ export default function Order() {
     }
   };
 
+  const handleSubmitPaymentProof = async () => {
+    if (!paymentState) return;
+    if (isImageProcessing || isVideoProcessing) {
+      toast({
+        title: "Media is still processing",
+        description: "Please wait until upload processing completes.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!paymentProofImage && !paymentProofVideo) {
+      toast({
+        title: "Payment proof required",
+        description: "Upload an image or video before submitting payment proof.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmittingProof(true);
+    try {
+      await api.uploadPaymentProof(paymentState.id, {
+        proofImage: paymentProofImage || undefined,
+        proofVideo: paymentProofVideo || undefined,
+      });
+      const latest = (await api.getPaymentStatus(paymentState.id)) as PaymentSession;
+      setPaymentState((prev) => ({ ...(prev || paymentState), ...latest, proofUploaded: true }));
+      toast({
+        title: "Payment proof submitted",
+        description: "Admin can now review and approve your order for the next process.",
+      });
+    } catch {
+      toast({
+        title: "Proof submission failed",
+        description: "Please try again or use a different file.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingProof(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) {
@@ -347,7 +406,7 @@ export default function Order() {
           paymentProofVideo: paymentProofVideo || undefined,
           items: orderItems,
         });
-        setOrderResult(result as { id: string; total: number; paymentStatus: string; trackingNumber?: string | null });
+        setOrderResult(result as { id: string; orderTrackingId?: string | null; total: number; paymentStatus: string; trackingNumber?: string | null });
         setPaymentState(null);
         clearPaymentProofs();
         clearCart();
@@ -371,7 +430,7 @@ export default function Order() {
         setOrderResult(null);
         toast({
           title: "Payment initiated",
-          description: "Complete the payment to create your order.",
+          description: "Order tracking ID created. Complete payment and submit proof for admin approval.",
         });
       }
     } catch (error) {
@@ -670,14 +729,22 @@ export default function Order() {
                     <div className="bg-secondary/40 border border-border rounded-xl p-6 space-y-3">
                       <h3 className="font-semibold text-lg">Payment Pending</h3>
                       <p className="text-sm text-muted-foreground">
-                        Complete the payment to finalize your order. We will create the order automatically after confirmation.
+                        Your order has been submitted. Complete payment, upload proof, then wait for admin approval to proceed.
                       </p>
                       <div className="text-sm space-y-1">
                         <p>
                           Amount: <span className="font-semibold">{formatCurrency(paymentState.amount)} ({paymentState.currency})</span>
                         </p>
+                        {paymentState.orderTrackingId && (
+                          <p>
+                            Order Tracking ID: <span className="font-semibold">{paymentState.orderTrackingId}</span>
+                          </p>
+                        )}
                         <p>
                           Reference: <span className="font-semibold">{paymentState.reference}</span>
+                        </p>
+                        <p>
+                          Proof Uploaded: <span className="font-semibold">{paymentState.proofUploaded ? "Yes" : "No"}</span>
                         </p>
                       </div>
                       {paymentState.instructions && (
@@ -696,16 +763,24 @@ export default function Order() {
                           </Button>
                         )}
                         <Button
+                          variant="secondary"
+                          onClick={() => void handleSubmitPaymentProof()}
+                          disabled={isSubmittingProof || isImageProcessing || isVideoProcessing}
+                        >
+                          {isSubmittingProof ? "Submitting Proof..." : "Submit Payment Proof"}
+                        </Button>
+                        <Button
                           variant="outline"
                           onClick={async () => {
                             try {
                               const latest = (await api.getPaymentStatus(paymentState.id)) as PaymentSession;
                               setPaymentState((prev) => ({ ...(prev || paymentState), ...latest }));
-                              if (latest.status === "paid" && latest.orderId) {
+                              if ((latest.status === "paid" || latest.approvedToProceed) && latest.orderId) {
                                 setOrderResult({
                                   id: latest.orderId,
+                                  orderTrackingId: latest.orderTrackingId || latest.trackingNumber || latest.orderId,
                                   total: latest.amount,
-                                  paymentStatus: "paid",
+                                  paymentStatus: latest.orderPaymentStatus || "paid",
                                   trackingNumber: latest.trackingNumber || null,
                                 });
                                 clearCart();
@@ -745,14 +820,14 @@ export default function Order() {
                           Order ID: <span className="font-semibold text-foreground">{orderResult.id}</span>
                         </p>
                         <p className="text-sm text-muted-foreground">
+                          Order Tracking ID:{" "}
+                          <span className="font-semibold text-foreground">{orderResult.orderTrackingId || orderResult.trackingNumber || orderResult.id}</span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
                           Payment Status: <span className="font-semibold text-foreground">{orderResult.paymentStatus}</span>
                         </p>
                         <Link
-                          to={`/track-order?orderId=${encodeURIComponent(orderResult.id)}${
-                            orderResult.trackingNumber
-                              ? `&trackingNumber=${encodeURIComponent(orderResult.trackingNumber)}`
-                              : ""
-                          }`}
+                          to={`/track-order?orderTrackingId=${encodeURIComponent(orderResult.orderTrackingId || orderResult.trackingNumber || orderResult.id)}`}
                         >
                           <Button variant="outline" className="mt-4">
                             Track This Order

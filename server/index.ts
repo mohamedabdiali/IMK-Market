@@ -237,13 +237,48 @@ const storedPaymentItemsSchema = z.object({
   orderItems: z.array(orderItemSchema).min(1),
   proofImage: z.string().optional(),
   proofVideo: z.string().optional(),
+  proofSubmittedAt: z.string().optional(),
+  proofApprovedAt: z.string().optional(),
 });
 
-function parseOrderItems(value: unknown): OrderItemPayload[] {
+type StoredPaymentItems = z.infer<typeof storedPaymentItemsSchema>;
+
+function parseStoredPaymentItems(value: unknown): StoredPaymentItems {
   const direct = z.array(orderItemSchema).safeParse(value);
-  if (direct.success) return direct.data;
+  if (direct.success) {
+    return { orderItems: direct.data };
+  }
   const wrapped = storedPaymentItemsSchema.safeParse(value);
-  return wrapped.success ? wrapped.data.orderItems : [];
+  if (wrapped.success) return wrapped.data;
+  return { orderItems: [] };
+}
+
+function buildStoredPaymentItems(data: StoredPaymentItems): Prisma.InputJsonValue {
+  const payload: Record<string, unknown> = {
+    orderItems: data.orderItems,
+  };
+  if (data.proofImage) payload.proofImage = data.proofImage;
+  if (data.proofVideo) payload.proofVideo = data.proofVideo;
+  if (data.proofSubmittedAt) payload.proofSubmittedAt = data.proofSubmittedAt;
+  if (data.proofApprovedAt) payload.proofApprovedAt = data.proofApprovedAt;
+  return payload as Prisma.InputJsonValue;
+}
+
+function parseOrderItems(value: unknown): OrderItemPayload[] {
+  return parseStoredPaymentItems(value).orderItems;
+}
+
+function resolveOrderTrackingId(order: { trackingNumber: string | null; id: string }) {
+  return order.trackingNumber || order.id;
+}
+
+function canProceedWithOrder(order: { paymentMethod: string; paymentStatus: string }) {
+  if (order.paymentMethod === "cod") return true;
+  return order.paymentStatus === "paid";
+}
+
+function requiresManualProofApproval(paymentMethod: string) {
+  return paymentMethod === "orange_money" || paymentMethod === "afrimoney" || paymentMethod === "qmoney";
 }
 
 async function appendTrackingEvent(payload: {
@@ -273,6 +308,7 @@ async function appendTrackingEvent(payload: {
 function buildTrackingPayload(order: {
   id: string;
   status: string;
+  paymentMethod: string;
   paymentStatus: string;
   total: number;
   cargoType: string | null;
@@ -319,8 +355,11 @@ function buildTrackingPayload(order: {
   const trackingEvents = order.trackingEvents.length ? order.trackingEvents : [fallbackEvent];
   return {
     id: order.id,
+    orderTrackingId: resolveOrderTrackingId(order),
     status: order.status,
+    paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+    approvedToProceed: canProceedWithOrder(order),
     total: order.total,
     cargoType: order.cargoType,
     trackingNumber: order.trackingNumber,
@@ -434,12 +473,54 @@ async function createOrderRecord(payload: {
 
   return {
     id: order.id,
+    orderTrackingId: resolveOrderTrackingId(order),
     total: order.total,
     status: order.status,
     paymentStatus: order.paymentStatus,
     trackingNumber: order.trackingNumber,
     estimatedDelivery: order.estimatedDelivery,
   };
+}
+
+async function markOrderPaymentApproved(payload: {
+  orderId: string;
+  source: "system" | "admin";
+  note: string;
+}) {
+  const order = await prisma.order.findUnique({ where: { id: payload.orderId } });
+  if (!order) return null;
+
+  const shouldMoveToProcessing = order.status === "pending";
+  const shouldMarkPaid = order.paymentStatus !== "paid";
+  if (!shouldMoveToProcessing && !shouldMarkPaid) {
+    return order;
+  }
+
+  const nextStatus: OrderStatus = shouldMoveToProcessing ? "processing" : (isOrderStatus(order.status) ? order.status : "processing");
+  const nextLocation = resolveStatusLocation(nextStatus, order.shippingAddress, order.currentLocation);
+  const updated = await prisma.order.update({
+    where: { id: order.id },
+    data: {
+      paymentStatus: "paid",
+      ...(shouldMoveToProcessing ? { status: "processing" } : {}),
+      currentLocation: nextLocation,
+      lastTrackingUpdate: new Date(),
+    },
+  });
+
+  await prisma.orderTrackingEvent.create({
+    data: {
+      orderId: order.id,
+      status: nextStatus,
+      title: "Payment Approved",
+      message: payload.note,
+      location: nextLocation,
+      source: payload.source,
+      eventAt: new Date(),
+    },
+  });
+
+  return updated;
 }
 
 async function ensureCategory(name: string) {
@@ -618,14 +699,13 @@ app.post("/api/payments/initiate", async (req, res) => {
     quantity: item.quantity,
     price: item.price,
   }));
-  const storedPaymentItems: Prisma.InputJsonValue =
-    paymentProofImage || paymentProofVideo
-      ? ({
-          orderItems: jsonItems,
-          ...(paymentProofImage ? { proofImage: paymentProofImage } : {}),
-          ...(paymentProofVideo ? { proofVideo: paymentProofVideo } : {}),
-        } as Prisma.InputJsonValue)
-      : (jsonItems as Prisma.InputJsonValue);
+  const hasProof = Boolean(paymentProofImage || paymentProofVideo);
+  const storedPaymentItems = buildStoredPaymentItems({
+    orderItems: jsonItems,
+    ...(paymentProofImage ? { proofImage: paymentProofImage } : {}),
+    ...(paymentProofVideo ? { proofVideo: paymentProofVideo } : {}),
+    ...(hasProof ? { proofSubmittedAt: createdAt } : {}),
+  });
 
   try {
     const created = await prisma.payment.create({
@@ -643,6 +723,23 @@ app.post("/api/payments/initiate", async (req, res) => {
         cargoType,
         items: storedPaymentItems,
       },
+    });
+
+    const provisionalOrder = await createOrderRecord({
+      customerName,
+      customerEmail,
+      customerPhone,
+      shippingAddress,
+      paymentMethod,
+      paymentStatus: "initialized",
+      paymentReference: reference,
+      cargoType,
+      items,
+    });
+
+    const payment = await prisma.payment.update({
+      where: { id: created.id },
+      data: { orderId: provisionalOrder.id },
     });
 
     // If using Stripe, create a Checkout Session and return redirect URL
@@ -675,15 +772,18 @@ app.post("/api/payments/initiate", async (req, res) => {
 
         const instructions = ["You will be redirected to a secure card payment page."];
         return res.json({
-          id: created.id,
-          status: created.status,
-          amount: created.amount,
-          currency: created.currency,
+          id: payment.id,
+          status: payment.status,
+          amount: payment.amount,
+          currency: payment.currency,
           reference,
           paymentMethod,
           instructions,
           paymentUrl: session.url,
           requiresRedirect: true,
+          orderId: provisionalOrder.id,
+          orderTrackingId: provisionalOrder.orderTrackingId,
+          proofUploaded: Boolean(paymentProofImage || paymentProofVideo),
         });
       } catch (error: unknown) {
         console.error("Stripe session creation failed", error);
@@ -695,24 +795,27 @@ app.post("/api/payments/initiate", async (req, res) => {
       paymentMethod === "paystack"
         ? [
             "You will be redirected to a secure card payment page.",
-            "Complete the payment to confirm your order.",
+            "After payment, admin will confirm and approve your order for processing.",
           ]
         : [
             `Send ${formatMoney(amount)} to ${SUPPORT_PHONE} (${BRAND_NAME}).`,
             `Use reference: ${reference}.`,
-            "Your order will be created once payment is confirmed.",
+            "Upload payment confirmation for admin approval.",
           ];
 
     res.json({
-      id: created.id,
-      status: created.status,
-      amount: created.amount,
-      currency: created.currency,
+      id: payment.id,
+      status: payment.status,
+      amount: payment.amount,
+      currency: payment.currency,
       reference,
       paymentMethod,
       instructions,
       paymentUrl: paymentMethod === "paystack" ? null : null,
       requiresRedirect: paymentMethod === "paystack",
+      orderId: provisionalOrder.id,
+      orderTrackingId: provisionalOrder.orderTrackingId,
+      proofUploaded: Boolean(paymentProofImage || paymentProofVideo),
     });
   } catch (e) {
     console.error("Initiate payment error", e);
@@ -727,9 +830,10 @@ app.get("/api/payments/:id", async (req, res) => {
     const orderTracking = payment.orderId
       ? await prisma.order.findUnique({
           where: { id: payment.orderId },
-          select: { trackingNumber: true },
+          select: { id: true, trackingNumber: true, paymentStatus: true, status: true, paymentMethod: true },
         })
       : null;
+    const storedPayment = parseStoredPaymentItems(payment.items);
     res.json({
       id: payment.id,
       status: payment.status,
@@ -738,14 +842,96 @@ app.get("/api/payments/:id", async (req, res) => {
       reference: payment.reference,
       paymentMethod: payment.paymentMethod,
       orderId: payment.orderId,
+      orderTrackingId: orderTracking ? resolveOrderTrackingId(orderTracking) : payment.orderId || null,
       trackingNumber: orderTracking?.trackingNumber || null,
       providerReference: payment.providerReference,
       updatedAt: payment.updatedAt,
       items: payment.items || null,
+      proofUploaded: Boolean(storedPayment.proofImage || storedPayment.proofVideo),
+      paymentProofImage: storedPayment.proofImage || null,
+      paymentProofVideo: storedPayment.proofVideo || null,
+      paymentProofSubmittedAt: storedPayment.proofSubmittedAt || null,
+      paymentProofApprovedAt: storedPayment.proofApprovedAt || null,
+      orderStatus: orderTracking?.status || null,
+      orderPaymentStatus: orderTracking?.paymentStatus || null,
+      approvedToProceed: orderTracking
+        ? canProceedWithOrder({ paymentMethod: orderTracking.paymentMethod, paymentStatus: orderTracking.paymentStatus })
+        : false,
     });
   } catch (e) {
     console.error("Fetch payment error", e);
     res.status(500).json({ error: "Failed to fetch payment" });
+  }
+});
+
+app.patch("/api/payments/:id/proof", async (req, res) => {
+  const schema = z
+    .object({
+      proofImage: z
+        .string()
+        .optional()
+        .refine((value) => !value || isValidImageMedia(value), "Invalid proof image"),
+      proofVideo: z
+        .string()
+        .optional()
+        .refine((value) => !value || isValidVideoMedia(value), "Invalid proof video"),
+    })
+    .refine((data) => Boolean(data.proofImage || data.proofVideo), {
+      message: "At least one proof file is required",
+    });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  try {
+    const payment = await prisma.payment.findUnique({ where: { id: req.params.id } });
+    if (!payment) return res.status(404).json({ error: "Not found" });
+
+    const parsedItems = parseStoredPaymentItems(payment.items);
+    const submittedAt = new Date().toISOString();
+    const nextItems = buildStoredPaymentItems({
+      orderItems: parsedItems.orderItems,
+      proofImage: parsed.data.proofImage || parsedItems.proofImage,
+      proofVideo: parsed.data.proofVideo || parsedItems.proofVideo,
+      proofSubmittedAt: submittedAt,
+    });
+
+    const updated = await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        items: nextItems,
+        status: payment.status === "failed" ? "pending" : payment.status,
+      },
+    });
+
+    if (payment.orderId) {
+      await prisma.order.update({
+        where: { id: payment.orderId },
+        data: {
+          paymentStatus: "initialized",
+          status: "pending",
+          lastTrackingUpdate: new Date(),
+        },
+      });
+    }
+
+    const linkedOrder = updated.orderId
+      ? await prisma.order.findUnique({ where: { id: updated.orderId }, select: { id: true, trackingNumber: true } })
+      : null;
+
+    res.json({
+      id: updated.id,
+      status: updated.status,
+      proofUploaded: true,
+      paymentProofSubmittedAt: submittedAt,
+      orderId: updated.orderId,
+      orderTrackingId: linkedOrder ? resolveOrderTrackingId(linkedOrder) : updated.orderId,
+    });
+  } catch (e) {
+    console.error("Update payment proof error", e);
+    res.status(500).json({ error: "Failed to update payment proof" });
   }
 });
 
@@ -770,8 +956,31 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
         if (!paymentId) return res.status(400).json({ error: "Missing payment metadata" });
         const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
         if (!payment) return res.status(404).json({ error: "Payment not found" });
-        await prisma.payment.update({ where: { id: payment.id }, data: { status: "paid", providerReference: session.id } });
-        if (!payment.orderId) {
+        const storedPayment = parseStoredPaymentItems(payment.items);
+        const approvedAt = new Date().toISOString();
+        const shouldWriteItems =
+          Boolean(storedPayment.proofImage || storedPayment.proofVideo) ||
+          Boolean(storedPayment.proofSubmittedAt || storedPayment.proofApprovedAt);
+        const nextPayment = await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: "paid",
+            providerReference: session.id,
+            ...(shouldWriteItems
+              ? {
+                  items: buildStoredPaymentItems({
+                    orderItems: storedPayment.orderItems,
+                    ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
+                    ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
+                    ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
+                    ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+                  }),
+                }
+              : {}),
+          },
+        });
+        let orderId = nextPayment.orderId;
+        if (!orderId) {
           const order = await createOrderRecord({
             customerName: payment.customerName,
             customerEmail: payment.customerEmail,
@@ -784,6 +993,14 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
             items: parseOrderItems(payment.items),
           });
           await prisma.payment.update({ where: { id: payment.id }, data: { orderId: order.id } });
+          orderId = order.id;
+        }
+        if (orderId) {
+          await markOrderPaymentApproved({
+            orderId,
+            source: "system",
+            note: "Payment confirmed. Your order is now moving to processing.",
+          });
         }
       }
       return res.json({ success: true });
@@ -831,28 +1048,58 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
     if (!payment) return res.status(404).json({ error: "Not found" });
 
     const newStatus = status === "paid" ? "paid" : "failed";
-    await prisma.payment.update({ where: { id: paymentId }, data: { status: newStatus, providerReference: providerReference || payment.providerReference } });
+    const storedPayment = parseStoredPaymentItems(payment.items);
+    const approvedAt = new Date().toISOString();
+    const shouldWriteItems =
+      Boolean(storedPayment.proofImage || storedPayment.proofVideo) ||
+      Boolean(storedPayment.proofSubmittedAt || storedPayment.proofApprovedAt);
+    const updatedPayment = await prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        status: newStatus,
+        providerReference: providerReference || payment.providerReference,
+        ...(newStatus === "paid" && shouldWriteItems
+          ? {
+              items: buildStoredPaymentItems({
+                orderItems: storedPayment.orderItems,
+                ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
+                ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
+                ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
+                ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+              }),
+            }
+          : {}),
+      },
+    });
 
     if (newStatus === "paid") {
-      const refreshed = await prisma.payment.findUnique({ where: { id: paymentId } });
-      if (refreshed && !refreshed.orderId) {
+      let orderId = updatedPayment.orderId;
+      if (!orderId) {
         const order = await createOrderRecord({
-          customerName: refreshed.customerName,
-          customerEmail: refreshed.customerEmail,
-          customerPhone: refreshed.customerPhone,
-          shippingAddress: refreshed.shippingAddress,
-          paymentMethod: refreshed.paymentMethod,
+          customerName: updatedPayment.customerName,
+          customerEmail: updatedPayment.customerEmail,
+          customerPhone: updatedPayment.customerPhone,
+          shippingAddress: updatedPayment.shippingAddress,
+          paymentMethod: updatedPayment.paymentMethod,
           paymentStatus: "paid",
-          paymentReference: refreshed.reference,
-          cargoType: refreshed.cargoType,
-          items: parseOrderItems(refreshed.items),
+          paymentReference: updatedPayment.reference,
+          cargoType: updatedPayment.cargoType,
+          items: parseOrderItems(updatedPayment.items),
         });
         await prisma.payment.update({ where: { id: paymentId }, data: { orderId: order.id } });
-        return res.json({ success: true, id: paymentId, status: newStatus, orderId: order.id });
+        orderId = order.id;
       }
+      if (orderId) {
+        await markOrderPaymentApproved({
+          orderId,
+          source: "system",
+          note: "Payment confirmed. Your order is now moving to processing.",
+        });
+      }
+      return res.json({ success: true, id: paymentId, status: newStatus, orderId: orderId || null });
     }
 
-    res.json({ success: true, id: paymentId, status: newStatus, orderId: payment.orderId });
+    res.json({ success: true, id: paymentId, status: newStatus, orderId: updatedPayment.orderId });
   } catch (e) {
     console.error("Webhook update error", e);
     res.status(500).json({ error: "Failed to process webhook" });
@@ -913,6 +1160,7 @@ app.post("/api/orders", async (req, res) => {
 
 app.get("/api/orders/track", async (req, res) => {
   const schema = z.object({
+    orderTrackingId: z.string().min(4).optional(),
     orderId: z.string().min(4).optional(),
     trackingNumber: z.string().min(4).optional(),
     email: z.string().email().optional(),
@@ -920,6 +1168,7 @@ app.get("/api/orders/track", async (req, res) => {
   });
 
   const parsed = schema.safeParse({
+    orderTrackingId: typeof req.query.orderTrackingId === "string" ? req.query.orderTrackingId : undefined,
     orderId: typeof req.query.orderId === "string" ? req.query.orderId : undefined,
     trackingNumber: typeof req.query.trackingNumber === "string" ? req.query.trackingNumber : undefined,
     email: typeof req.query.email === "string" ? req.query.email : undefined,
@@ -930,42 +1179,55 @@ app.get("/api/orders/track", async (req, res) => {
     return res.status(400).json({ error: "Invalid query", details: parsed.error.flatten() });
   }
 
-  const { orderId, trackingNumber, email, phone } = parsed.data;
-  if (!orderId && !trackingNumber) {
-    return res.status(400).json({ error: "Provide orderId or trackingNumber" });
+  const { orderTrackingId, orderId, trackingNumber, email, phone } = parsed.data;
+  if (!orderTrackingId && !orderId && !trackingNumber) {
+    return res.status(400).json({ error: "Provide orderTrackingId, orderId, or trackingNumber" });
   }
 
-  const hasStrongPair = Boolean(orderId && trackingNumber);
-  if (!hasStrongPair && !email && !phone) {
+  const hasStrongReference = Boolean(orderTrackingId) || Boolean(orderId && trackingNumber);
+  if (!hasStrongReference && !email && !phone) {
     return res.status(400).json({ error: "Provide email or phone for verification" });
   }
 
   try {
-    const order = orderId
+    const includePayload = {
+      items: true,
+      trackingEvents: { orderBy: { eventAt: "asc" as const } },
+    };
+    const order = orderTrackingId
+      ? await prisma.order.findFirst({
+          where: {
+            OR: [{ id: orderTrackingId }, { trackingNumber: orderTrackingId }],
+          },
+          include: includePayload,
+        })
+      : orderId
       ? await prisma.order.findUnique({
           where: { id: orderId },
-          include: {
-            items: true,
-            trackingEvents: { orderBy: { eventAt: "asc" } },
-          },
+          include: includePayload,
         })
       : await prisma.order.findFirst({
           where: { trackingNumber: trackingNumber || undefined },
-          include: {
-            items: true,
-            trackingEvents: { orderBy: { eventAt: "asc" } },
-          },
+          include: includePayload,
         });
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
+    if (orderTrackingId) {
+      const normalized = orderTrackingId.toLowerCase();
+      const matchesTrackingId = order.id.toLowerCase() === normalized || order.trackingNumber?.toLowerCase() === normalized;
+      if (!matchesTrackingId) return res.status(404).json({ error: "Order not found" });
+    }
+    if (orderId && order.id.toLowerCase() !== orderId.toLowerCase()) {
+      return res.status(404).json({ error: "Order not found" });
+    }
     if (trackingNumber && order.trackingNumber?.toLowerCase() !== trackingNumber.toLowerCase()) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    if (hasStrongPair) {
+    if (hasStrongReference) {
       return res.json(buildTrackingPayload(order));
     }
 
@@ -1177,8 +1439,37 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
       include: { items: true, trackingEvents: { orderBy: { eventAt: "desc" } } },
       orderBy: { createdAt: "desc" },
     });
+    const orderIds = orders.map((order) => order.id);
+    const payments = orderIds.length
+      ? await prisma.payment.findMany({
+          where: { orderId: { in: orderIds } },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    const paymentByOrderId = new Map<string, (typeof payments)[number]>();
+    for (const payment of payments) {
+      if (!payment.orderId) continue;
+      if (!paymentByOrderId.has(payment.orderId)) {
+        paymentByOrderId.set(payment.orderId, payment);
+      }
+    }
+
     const result = orders.map((order) => ({
+      ...(function resolveOrderPaymentData() {
+        const linkedPayment = paymentByOrderId.get(order.id);
+        const paymentItems = linkedPayment
+          ? parseStoredPaymentItems(linkedPayment.items)
+          : { orderItems: [], proofImage: undefined, proofVideo: undefined, proofSubmittedAt: undefined, proofApprovedAt: undefined };
+        return {
+          paymentId: linkedPayment?.id || null,
+          paymentProofImage: paymentItems.proofImage || null,
+          paymentProofVideo: paymentItems.proofVideo || null,
+          paymentProofSubmittedAt: paymentItems.proofSubmittedAt || null,
+          paymentProofApprovedAt: paymentItems.proofApprovedAt || null,
+        };
+      })(),
       id: order.id,
+      orderTrackingId: resolveOrderTrackingId(order),
       customerName: order.customerName,
       customerEmail: order.customerEmail,
       customerPhone: order.customerPhone,
@@ -1218,6 +1509,64 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
   } catch (e) {
     console.error("Fetch admin orders error", e);
     res.status(500).json({ error: "Failed to fetch orders" });
+  }
+});
+
+app.post("/api/admin/orders/:id/approve-payment", requireAdmin, async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: "Not found" });
+    if (order.paymentMethod === "cod") {
+      return res.status(400).json({ error: "COD orders do not require payment approval" });
+    }
+
+    const payment = await prisma.payment.findFirst({
+      where: { orderId: order.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!payment) {
+      return res.status(404).json({ error: "Linked payment record not found" });
+    }
+
+    const parsedItems = parseStoredPaymentItems(payment.items);
+    if (requiresManualProofApproval(order.paymentMethod) && !parsedItems.proofImage && !parsedItems.proofVideo) {
+      return res.status(400).json({ error: "Payment proof image or video is required before approval" });
+    }
+
+    const approvedAt = new Date().toISOString();
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "paid",
+        items: buildStoredPaymentItems({
+          orderItems: parsedItems.orderItems,
+          ...(parsedItems.proofImage ? { proofImage: parsedItems.proofImage } : {}),
+          ...(parsedItems.proofVideo ? { proofVideo: parsedItems.proofVideo } : {}),
+          ...(parsedItems.proofSubmittedAt ? { proofSubmittedAt: parsedItems.proofSubmittedAt } : {}),
+          ...(parsedItems.proofImage || parsedItems.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+        }),
+      },
+    });
+
+    const updatedOrder = await markOrderPaymentApproved({
+      orderId: order.id,
+      source: "admin",
+      note: "Payment approved by admin. Your order is now moving to processing.",
+    });
+    if (!updatedOrder) return res.status(404).json({ error: "Order not found" });
+
+    res.json({
+      success: true,
+      id: updatedOrder.id,
+      orderTrackingId: resolveOrderTrackingId(updatedOrder),
+      status: updatedOrder.status,
+      paymentStatus: updatedOrder.paymentStatus,
+      paymentId: payment.id,
+      paymentProofApprovedAt: parsedItems.proofImage || parsedItems.proofVideo ? approvedAt : null,
+    });
+  } catch (e) {
+    console.error("Approve payment error", e);
+    res.status(500).json({ error: "Failed to approve payment" });
   }
 });
 

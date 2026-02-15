@@ -50,8 +50,9 @@ export const api = {
     }),
   createOrder: (payload: unknown) =>
     apiFetch("/orders", { method: "POST", body: JSON.stringify(payload) }),
-  trackOrder: (params: { orderId?: string; trackingNumber?: string; email?: string; phone?: string }) => {
+  trackOrder: (params: { orderTrackingId?: string; orderId?: string; trackingNumber?: string; email?: string; phone?: string }) => {
     const query = new URLSearchParams();
+    if (params.orderTrackingId) query.set("orderTrackingId", params.orderTrackingId);
     if (params.orderId) query.set("orderId", params.orderId);
     if (params.trackingNumber) query.set("trackingNumber", params.trackingNumber);
     if (params.email) query.set("email", params.email);
@@ -62,6 +63,8 @@ export const api = {
   initiatePayment: (payload: unknown) =>
     apiFetch("/payments/initiate", { method: "POST", body: JSON.stringify(payload) }),
   getPaymentStatus: (id: string) => apiFetch(`/payments/${id}`),
+  uploadPaymentProof: (id: string, payload: { proofImage?: string; proofVideo?: string }) =>
+    apiFetch(`/payments/${id}/proof`, { method: "PATCH", body: JSON.stringify(payload) }),
   customerRegister: (payload: { name?: string; email?: string; phone: string; password: string }) =>
     apiFetch("/customers/register", { method: "POST", body: JSON.stringify(payload) }),
   customerLogin: (payload: { phone: string; password: string }) =>
@@ -83,6 +86,11 @@ export const api = {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(payload),
+    }),
+  approveOrderPayment: (token: string, id: string) =>
+    apiFetch(`/admin/orders/${id}/approve-payment`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
     }),
   getAdminAnalytics: (token: string) =>
     apiFetch("/admin/analytics", {

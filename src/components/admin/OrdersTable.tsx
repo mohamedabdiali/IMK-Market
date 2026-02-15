@@ -34,6 +34,7 @@ interface OrdersTableProps {
   orders: AdminOrder[];
   onStatusChange: (orderId: string, status: OrderStatus) => void;
   onTrackingUpdate: (orderId: string, payload: AdminTrackingUpdatePayload) => Promise<void>;
+  onApprovePayment: (orderId: string) => Promise<void>;
 }
 
 const statusColors: Record<OrderStatus, string> = {
@@ -51,9 +52,10 @@ const toDateInputValue = (value?: string) => {
   return date.toISOString().slice(0, 10);
 };
 
-export function OrdersTable({ orders, onStatusChange, onTrackingUpdate }: OrdersTableProps) {
+export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprovePayment }: OrdersTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [isSavingTracking, setIsSavingTracking] = useState(false);
+  const [isApprovingPayment, setIsApprovingPayment] = useState(false);
   const [trackingForm, setTrackingForm] = useState({
     trackingNumber: "",
     trackingCarrier: "",
@@ -136,7 +138,7 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate }: Orders
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead>Order ID</TableHead>
+              <TableHead>Tracking ID</TableHead>
               <TableHead>Customer</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Total</TableHead>
@@ -149,7 +151,10 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate }: Orders
           <TableBody>
             {orders.map((order) => (
               <TableRow key={order.id}>
-                <TableCell className="font-medium">{order.id}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{order.orderTrackingId || order.trackingNumber || order.id}</div>
+                  <div className="text-xs text-muted-foreground">Order: {order.id}</div>
+                </TableCell>
                 <TableCell>
                   <div>
                     <p className="font-medium">{order.customerName}</p>
@@ -199,7 +204,9 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate }: Orders
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Order Details - {selectedOrder?.id}</DialogTitle>
+            <DialogTitle>
+              Order Details - {selectedOrder?.orderTrackingId || selectedOrder?.trackingNumber || selectedOrder?.id}
+            </DialogTitle>
           </DialogHeader>
           {selectedOrder && (
             <div className="space-y-4">
@@ -226,6 +233,66 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate }: Orders
                     <p className="text-sm text-muted-foreground">
                       Reference: {selectedOrder.paymentReference}
                     </p>
+                  )}
+                  {selectedOrder.paymentId && (
+                    <p className="text-sm text-muted-foreground">
+                      Payment ID: {selectedOrder.paymentId}
+                    </p>
+                  )}
+                  {selectedOrder.paymentProofSubmittedAt && (
+                    <p className="text-sm text-muted-foreground">
+                      Proof Submitted: {format(new Date(selectedOrder.paymentProofSubmittedAt), "MMM dd, yyyy HH:mm")}
+                    </p>
+                  )}
+                  {selectedOrder.paymentProofApprovedAt && (
+                    <p className="text-sm text-muted-foreground">
+                      Proof Approved: {format(new Date(selectedOrder.paymentProofApprovedAt), "MMM dd, yyyy HH:mm")}
+                    </p>
+                  )}
+                  {(selectedOrder.paymentProofImage || selectedOrder.paymentProofVideo) && (
+                    <div className="grid sm:grid-cols-2 gap-3 mt-3">
+                      {selectedOrder.paymentProofImage && (
+                        <a href={selectedOrder.paymentProofImage} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={selectedOrder.paymentProofImage}
+                            alt="Payment proof"
+                            className="h-28 w-full rounded-md border border-border/60 object-cover"
+                          />
+                        </a>
+                      )}
+                      {selectedOrder.paymentProofVideo && (
+                        <video
+                          src={selectedOrder.paymentProofVideo}
+                          controls
+                          className="h-28 w-full rounded-md border border-border/60 object-cover"
+                        />
+                      )}
+                    </div>
+                  )}
+                  {selectedOrder.paymentMethod !== "cod" && selectedOrder.paymentStatus !== "paid" && (
+                    <div className="mt-3">
+                      <Button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setIsApprovingPayment(true);
+                            await onApprovePayment(selectedOrder.id);
+                            setSelectedOrder(null);
+                          } catch {
+                            toast({
+                              title: "Payment approval failed",
+                              description: "Confirm that payment proof is uploaded, then try again.",
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setIsApprovingPayment(false);
+                          }
+                        }}
+                        disabled={isApprovingPayment}
+                      >
+                        {isApprovingPayment ? "Approving..." : "Approve Payment"}
+                      </Button>
+                    </div>
                   )}
                 </div>
               )}

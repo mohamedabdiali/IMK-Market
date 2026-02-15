@@ -45,6 +45,13 @@ export default function AdminOrders() {
     },
   });
 
+  const approvePaymentMutation = useMutation({
+    mutationFn: (orderId: string) => api.approveOrderPayment(token || "", orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    },
+  });
+
   const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
     mutation.mutate({ id: orderId, status: newStatus });
     toast({
@@ -61,10 +68,19 @@ export default function AdminOrders() {
     });
   };
 
+  const handleApprovePayment = async (orderId: string) => {
+    await approvePaymentMutation.mutateAsync(orderId);
+    toast({
+      title: "Payment Approved",
+      description: `Payment approved for order ${orderId}.`,
+    });
+  };
+
   const filteredOrders = useMemo(() => {
     return (orders as AdminOrder[]).filter(order => {
       const matchesSearch =
         order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.orderTrackingId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.customerEmail.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
@@ -88,7 +104,7 @@ export default function AdminOrders() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by order ID, customer name or email..."
+              placeholder="Search by tracking ID, order ID, customer name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -118,6 +134,7 @@ export default function AdminOrders() {
             orders={filteredOrders}
             onStatusChange={handleStatusChange}
             onTrackingUpdate={handleTrackingUpdate}
+            onApprovePayment={handleApprovePayment}
           />
         )}
       </main>

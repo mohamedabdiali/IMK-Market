@@ -1,6 +1,6 @@
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
 export type ProductStatus = 'pending' | 'approved' | 'rejected';
-export type PaymentMethod = 'cod' | 'orange_money' | 'afrimoney' | 'qmoney' | 'paystack';
+export type PaymentMethod = 'cod' | 'orange_money' | 'afrimoney' | 'qmoney' | 'paystack' | 'stripe';
 export type PaymentStatus = 'pending' | 'initialized' | 'paid' | 'failed';
 
 export interface OrderTrackingEvent {
@@ -24,6 +24,7 @@ export interface AdminTrackingUpdatePayload {
 
 export interface AdminOrder {
   id: string;
+  orderTrackingId?: string;
   customerName: string;
   customerEmail: string;
   customerPhone?: string;
@@ -33,6 +34,11 @@ export interface AdminOrder {
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   paymentReference?: string;
+  paymentId?: string | null;
+  paymentProofImage?: string | null;
+  paymentProofVideo?: string | null;
+  paymentProofSubmittedAt?: string | null;
+  paymentProofApprovedAt?: string | null;
   createdAt: string;
   shippingAddress: string;
   cargoType?: string;

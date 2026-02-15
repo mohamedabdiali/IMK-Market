@@ -40,8 +40,8 @@ export default function TrackOrder() {
   const { user, loginAsTrackingCustomer } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({
-    orderId: searchParams.get("orderId") || "",
-    trackingNumber: searchParams.get("trackingNumber") || "",
+    orderTrackingId:
+      searchParams.get("orderTrackingId") || searchParams.get("trackingNumber") || searchParams.get("orderId") || "",
   });
   const [result, setResult] = useState<OrderTrackingDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,22 +49,13 @@ export default function TrackOrder() {
 
   const loadTracking = useCallback(async (payload?: Partial<typeof formData>) => {
     const request = {
-      orderId: (payload?.orderId ?? formData.orderId).trim(),
-      trackingNumber: (payload?.trackingNumber ?? formData.trackingNumber).trim(),
+      orderTrackingId: (payload?.orderTrackingId ?? formData.orderTrackingId).trim(),
     };
 
-    if (!request.orderId && !request.trackingNumber) {
+    if (!request.orderTrackingId) {
       toast({
         title: "Order reference required",
-        description: "Provide an Order ID or Tracking Number.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!request.orderId || !request.trackingNumber) {
-      toast({
-        title: "Order ID and Tracking Number required",
-        description: "Enter both values to sign in and track your shipment.",
+        description: "Provide your Order Tracking ID.",
         variant: "destructive",
       });
       return;
@@ -75,11 +66,13 @@ export default function TrackOrder() {
       const tracked = await api.trackOrder(request);
       setResult(tracked);
       if (!user) {
-        loginAsTrackingCustomer(request.orderId || tracked.id, request.trackingNumber || tracked.trackingNumber || "");
+        loginAsTrackingCustomer(
+          tracked.id || request.orderTrackingId,
+          tracked.orderTrackingId || tracked.trackingNumber || request.orderTrackingId
+        );
       }
       const next = new URLSearchParams();
-      if (request.orderId) next.set("orderId", request.orderId);
-      if (request.trackingNumber) next.set("trackingNumber", request.trackingNumber);
+      if (request.orderTrackingId) next.set("orderTrackingId", request.orderTrackingId);
       setSearchParams(next, { replace: true });
     } catch {
       setResult(null);
@@ -95,13 +88,12 @@ export default function TrackOrder() {
 
   useEffect(() => {
     if (hasAutoRequested.current) return;
-    const orderId = searchParams.get("orderId") || "";
-    const trackingNumber = searchParams.get("trackingNumber") || "";
-    if ((!orderId || !trackingNumber) && !(user?.source === "tracking" && user.trackingOrderId && user.trackingNumber)) return;
+    const orderTrackingId =
+      searchParams.get("orderTrackingId") || searchParams.get("trackingNumber") || searchParams.get("orderId") || "";
+    if (!orderTrackingId && !(user?.source === "tracking" && (user.trackingNumber || user.trackingOrderId))) return;
     hasAutoRequested.current = true;
     void loadTracking({
-      orderId: orderId || user?.trackingOrderId || "",
-      trackingNumber: trackingNumber || user?.trackingNumber || "",
+      orderTrackingId: orderTrackingId || user?.trackingNumber || user?.trackingOrderId || "",
     });
   }, [searchParams, loadTracking, user]);
 
@@ -125,35 +117,24 @@ export default function TrackOrder() {
           <div className="container max-w-5xl space-y-8">
             <div className="bg-card rounded-xl border border-border shadow-sm p-6 md:p-8">
               <form
-                className="grid md:grid-cols-2 gap-4"
+                className="grid gap-4"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void loadTracking();
                 }}
               >
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Order ID</label>
+                  <label className="text-sm font-medium mb-2 block">Order Tracking ID</label>
                   <Input
                     required
-                    placeholder="ORD-XXXXXX"
-                    value={formData.orderId}
+                    placeholder="TRK-XXXXXXXXXX or ORD-XXXXXX"
+                    value={formData.orderTrackingId}
                     onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, orderId: event.target.value }))
+                      setFormData((prev) => ({ ...prev, orderTrackingId: event.target.value }))
                     }
                   />
                 </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Tracking Number</label>
-                  <Input
-                    required
-                    placeholder="TRK-XXXXXXXXXX"
-                    value={formData.trackingNumber}
-                    onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, trackingNumber: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="md:col-span-2 flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-3">
                   <Button type="submit" variant="gold" disabled={isLoading}>
                     {isLoading ? "Checking..." : user ? "Track Order" : "Login & Track Order"}
                   </Button>
@@ -164,8 +145,8 @@ export default function TrackOrder() {
                   </Link>
                 </div>
                 {!user && (
-                  <p className="md:col-span-2 text-xs text-muted-foreground">
-                    Enter a valid Order ID and Tracking Number to sign in automatically and view your tracking timeline.
+                  <p className="text-xs text-muted-foreground">
+                    Enter a valid tracking ID to sign in automatically and view your tracking timeline.
                   </p>
                 )}
               </form>
@@ -178,6 +159,9 @@ export default function TrackOrder() {
                     <div>
                       <p className="text-sm text-muted-foreground">Order</p>
                       <p className="text-lg font-semibold">{result.id}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Tracking ID: {result.orderTrackingId || result.trackingNumber || result.id}
+                      </p>
                     </div>
                     <Badge
                       className={statusColors[result.status] || "bg-muted text-foreground"}
@@ -202,8 +186,8 @@ export default function TrackOrder() {
 
                   <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="rounded-lg border border-border/60 p-3">
-                      <div className="text-xs text-muted-foreground mb-1">Tracking Number</div>
-                      <div className="font-medium">{result.trackingNumber || "N/A"}</div>
+                      <div className="text-xs text-muted-foreground mb-1">Order Tracking ID</div>
+                      <div className="font-medium">{result.orderTrackingId || result.trackingNumber || result.id}</div>
                     </div>
                     <div className="rounded-lg border border-border/60 p-3">
                       <div className="text-xs text-muted-foreground mb-1">Carrier</div>
@@ -216,6 +200,22 @@ export default function TrackOrder() {
                     <div className="rounded-lg border border-border/60 p-3">
                       <div className="text-xs text-muted-foreground mb-1">Order Total</div>
                       <div className="font-medium">{formatCurrency(result.total)}</div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-border/60 p-4">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground">Approval Status</span>
+                      <Badge
+                        variant="outline"
+                        className={
+                          result.approvedToProceed
+                            ? "bg-green-100 text-green-800 border-green-200"
+                            : "bg-yellow-100 text-yellow-800 border-yellow-200"
+                        }
+                      >
+                        {result.approvedToProceed ? "Approved to Proceed" : "Awaiting Payment Approval"}
+                      </Badge>
                     </div>
                   </div>
 

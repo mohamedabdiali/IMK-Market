@@ -13,8 +13,11 @@ export interface TrackingEvent {
 
 export interface OrderTrackingDetails {
   id: string;
+  orderTrackingId?: string;
   status: OrderStatus;
+  paymentMethod?: string;
   paymentStatus: PaymentStatus;
+  approvedToProceed?: boolean;
   total: number;
   cargoType?: string | null;
   trackingNumber?: string | null;
