@@ -11,7 +11,7 @@ import { Product } from "@/types/product";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { ProductCard } from "@/components/products/ProductCard";
-import { ProductImageSlideshow } from "@/components/products/ProductImageSlideshow";
+import { ProductDetailGallery } from "@/components/products/ProductDetailGallery";
 import { formatCurrency } from "@/lib/utils";
 
 export default function ProductDetail() {
@@ -120,23 +120,12 @@ export default function ProductDetail() {
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
             {/* Images */}
             <div className="space-y-4">
-              <div className="relative aspect-square rounded-2xl overflow-hidden bg-secondary border border-border">
-                <ProductImageSlideshow
-                  images={productImages}
-                  alt={typedProduct.name}
-                  className="h-full w-full"
-                />
-                {typedProduct.badge && (
-                  <span className="absolute top-4 left-4 px-3 py-1.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg">
-                    {typedProduct.badge}
-                  </span>
-                )}
-                {discount && (
-                  <span className="absolute top-4 right-4 px-3 py-1.5 bg-destructive text-destructive-foreground text-sm font-semibold rounded-lg">
-                    -{discount}% OFF
-                  </span>
-                )}
-              </div>
+              <ProductDetailGallery
+                images={productImages}
+                alt={typedProduct.name}
+                badge={typedProduct.badge}
+                discountPercentage={discount}
+              />
             </div>
 
             {/* Info */}

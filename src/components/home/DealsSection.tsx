@@ -164,7 +164,7 @@ export function DealsSection() {
                         images={images}
                         alt={product.name}
                         className="h-full w-full overflow-hidden rounded-xl border border-border/70 bg-background/90"
-                        imageClassName="h-full w-full object-contain p-2"
+                        imageClassName="h-full w-full object-cover"
                       />
                       {hasDiscount && (
                         <div className="absolute top-3 left-3 px-2 py-1 bg-destructive text-destructive-foreground text-sm font-bold rounded">

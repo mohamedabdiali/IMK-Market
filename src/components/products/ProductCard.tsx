@@ -36,7 +36,7 @@ export function ProductCard({ product }: ProductCardProps) {
             images={images}
             alt={product.name}
             className="h-full w-full"
-            imageClassName="h-full w-full object-contain p-1.5"
+            imageClassName="h-full w-full object-cover"
           />
         </Link>
         
