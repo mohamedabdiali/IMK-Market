@@ -1274,5 +1274,9 @@ app.post('/api/admin/email/low-stock-alerts', requireAdmin, (_req, res) => {
   res.json({ sent: low.length });
 });
 
-app.listen(PORT, () => console.log(`Mock API with ${products.length} products listening on port ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Mock API with ${products.length} products listening on port ${PORT}`));
+}
+
+module.exports = app;
 
