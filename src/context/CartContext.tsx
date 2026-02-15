@@ -18,6 +18,22 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const STORAGE_KEY = "cart_items_v1";
 
+const safeGetItem = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (private mode / blocked storage).
+  }
+};
+
 function parseCartItems(raw: string | null): CartItem[] {
   if (!raw) return [];
   try {
@@ -60,12 +76,12 @@ function parseCartItems(raw: string | null): CartItem[] {
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => {
     if (typeof window === "undefined") return [];
-    return parseCartItems(localStorage.getItem(STORAGE_KEY));
+    return parseCartItems(safeGetItem(STORAGE_KEY));
   });
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    safeSetItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
   useEffect(() => {

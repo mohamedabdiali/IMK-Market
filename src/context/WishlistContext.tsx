@@ -16,6 +16,22 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 
 const STORAGE_KEY = "wishlist_ids_v1";
 
+const safeGetItem = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (private mode / blocked storage).
+  }
+};
+
 function parseWishlistIds(raw: string | null): string[] {
   if (!raw) return [];
   try {
@@ -30,11 +46,11 @@ function parseWishlistIds(raw: string | null): string[] {
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const [ids, setIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
-    return parseWishlistIds(localStorage.getItem(STORAGE_KEY));
+    return parseWishlistIds(safeGetItem(STORAGE_KEY));
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    safeSetItem(STORAGE_KEY, JSON.stringify(ids));
   }, [ids]);
 
   useEffect(() => {
@@ -114,4 +130,3 @@ export function useWishlist() {
   }
   return context;
 }
-

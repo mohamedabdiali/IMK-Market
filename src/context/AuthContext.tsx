@@ -24,15 +24,43 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORAGE_KEY = "auth_user";
 const TOKEN_KEY = "auth_token";
 
+const safeGetItem = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (private mode / blocked storage).
+  }
+};
+
+const safeRemoveItem = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage write failures (private mode / blocked storage).
+  }
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem(STORAGE_KEY);
-    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedUser = safeGetItem(STORAGE_KEY);
+    const storedToken = safeGetItem(TOKEN_KEY);
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        safeRemoveItem(STORAGE_KEY);
+      }
     }
     if (storedToken) {
       setToken(storedToken);
@@ -45,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const newUser: User = { email: result.email, role: result.role, source: "admin" };
       setUser(newUser);
       setToken(result.token);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
-      localStorage.setItem(TOKEN_KEY, result.token);
+      safeSetItem(STORAGE_KEY, JSON.stringify(newUser));
+      safeSetItem(TOKEN_KEY, result.token);
       return true;
     } catch {
       return false;
@@ -65,15 +93,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     setUser(trackingUser);
     setToken(null);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(trackingUser));
-    localStorage.removeItem(TOKEN_KEY);
+    safeSetItem(STORAGE_KEY, JSON.stringify(trackingUser));
+    safeRemoveItem(TOKEN_KEY);
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(TOKEN_KEY);
+    safeRemoveItem(STORAGE_KEY);
+    safeRemoveItem(TOKEN_KEY);
   };
 
   const isAdmin = user?.role === "admin";
