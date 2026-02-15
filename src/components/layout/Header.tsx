@@ -1,33 +1,37 @@
-import { Search, ShoppingCart, User, Menu, Globe, Heart, Phone, X } from "lucide-react";
+import { Search, ShoppingCart, User, Menu, Globe, Phone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/context/CartContext";
-import { useWishlist } from "@/context/WishlistContext";
 import { useAuth } from "@/context/AuthContext";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-const navItems = [
+const baseNavItems = [
   { label: "Home", href: "/" },
   { label: "Category", href: "/products" },
   { label: "Market Prices", href: "/market-prices" },
   { label: "Sell Products", href: "/sell" },
   { label: "Order Products", href: "/order" },
   { label: "Track Order", href: "/track-order" },
-  { label: "Account", href: "/account" },
-  { label: "Wishlist", href: "/wishlist" },
   { label: "About Us", href: "/about" },
   { label: "Contact", href: "/contact" },
 ];
 
 export function Header() {
   const { totalItems: cartItemsCount, setIsCartOpen } = useCart();
-  const { totalItems: wishlistCount } = useWishlist();
   const { user, isAdmin, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const isCustomerAuthenticated = Boolean(
+    user && !isAdmin && user.role === "user" && user.source !== "tracking"
+  );
+
+  const navItems = isCustomerAuthenticated
+    ? [...baseNavItems.slice(0, 6), { label: "Wishlist", href: "/wishlist" }, ...baseNavItems.slice(6)]
+    : baseNavItems;
 
   useEffect(() => {
     if (location.pathname !== "/products") return;
@@ -89,22 +93,18 @@ export function Header() {
                   Logout
                 </button>
               </>
-            ) : (
-              <Link to="/admin/login" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
-                Admin Login
-              </Link>
-            )}
+            ) : null}
             <button className="flex items-center gap-1 hover:text-accent transition-colors">
               <Globe className="h-3 w-3" />
               English
             </button>
-            <span className="hidden sm:inline">
-              {user
-                ? user.source === "tracking"
-                  ? `Tracking session: ${user.trackingOrderId || "Customer"}`
-                  : `Signed in: ${user.phone || user.email}`
-                : "Welcome, Guest"}
-            </span>
+            {!isAdmin && (
+              <Link to="/account" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
+                {isCustomerAuthenticated
+                  ? user?.name || user?.phone || user?.email || "My Account"
+                  : "Login / Sign Up"}
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -135,8 +135,8 @@ export function Header() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-10 rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
-                <Button 
-                  size="icon" 
+                <Button
+                  size="icon"
                   className="h-10 w-12 rounded-none bg-accent hover:bg-accent/90"
                   type="submit"
                 >
@@ -151,26 +151,20 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
-              className="relative hidden md:flex"
-              onClick={() => navigate("/wishlist")}
-              aria-label="Wishlist"
+              className="hidden md:flex"
+              onClick={() => navigate("/account")}
+              aria-label={isCustomerAuthenticated ? "My Account" : "Login or Sign Up"}
+              title={isCustomerAuthenticated ? "My Account" : "Login / Sign Up"}
             >
-              <Heart className="h-5 w-5" />
-              {wishlistCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-bold">
-                  {wishlistCount}
-                </span>
-              )}
-            </Button>
-            
-            <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => navigate("/account")} aria-label="Account">
               <User className="h-5 w-5" />
             </Button>
 
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               className="relative"
               onClick={() => setIsCartOpen(true)}
+              aria-label="Cart"
+              title="Cart"
             >
               <ShoppingCart className="h-5 w-5" />
               {cartItemsCount > 0 && (
@@ -180,9 +174,9 @@ export function Header() {
               )}
             </Button>
 
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="md:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
@@ -237,7 +231,7 @@ export function Header() {
               </div>
             </form>
           </div>
-          
+
           <ul className="py-2">
             {navItems.map((item) => (
               <li key={item.href}>

@@ -9,16 +9,22 @@ import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductCardSkeleton } from "@/components/products/ProductCardSkeleton";
 import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { Product } from "@/types/product";
 
 export default function Wishlist() {
   const { ids, clearWishlist } = useWishlist();
+  const { user, isAdmin } = useAuth();
+  const canAccessWishlist = Boolean(
+    user && !isAdmin && user.role === "user" && user.source !== "tracking"
+  );
   const { data: products = [], isLoading, isError } = useQuery({
     queryKey: ["products"],
     queryFn: () => api.getProducts(),
     refetchOnWindowFocus: true,
     refetchOnMount: "always",
+    enabled: canAccessWishlist,
   });
 
   const { items, missingCount } = useMemo(() => {
@@ -26,6 +32,29 @@ export default function Wishlist() {
     const resolved = ids.map((id) => byId.get(id)).filter(Boolean) as Product[];
     return { items: resolved, missingCount: Math.max(0, ids.length - resolved.length) };
   }, [ids, products]);
+
+  if (!canAccessWishlist) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <main className="flex-1">
+          <section className="container py-16">
+            <div className="mx-auto max-w-xl rounded-xl border bg-card p-8 text-center">
+              <h1 className="text-2xl font-bold">Login Required</h1>
+              <p className="text-muted-foreground mt-2">
+                Please sign in to your customer account to use Wishlist.
+              </p>
+              <Link to="/account">
+                <Button variant="gold" className="mt-6">Go to Login / Sign Up</Button>
+              </Link>
+            </div>
+          </section>
+        </main>
+        <Footer />
+        <CartDrawer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

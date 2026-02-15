@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Product } from "@/types/product";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import { formatCurrency } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { ProductImageSlideshow } from "@/components/products/ProductImageSlideshow";
@@ -14,7 +15,11 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
-  const wishlisted = isWishlisted(product.id);
+  const { user, isAdmin } = useAuth();
+  const canUseWishlist = Boolean(
+    user && !isAdmin && user.role === "user" && user.source !== "tracking"
+  );
+  const wishlisted = canUseWishlist ? isWishlisted(product.id) : false;
   const normalizedImages = (product.images ?? [])
     .map((src) => (typeof src === "string" ? src.trim() : ""))
     .filter((src) => src.length > 0);
@@ -54,18 +59,19 @@ export function ProductCard({ product }: ProductCardProps) {
           )}
         </div>
 
-        {/* Wishlist button */}
-        <button
-          onClick={() => toggleWishlist(product)}
-          className="absolute top-1.5 right-1.5 p-1.5 bg-card/90 backdrop-blur-sm rounded-full opacity-100 transition-opacity hover:bg-card shadow-sm"
-          aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-        >
-          <Heart
-            className={`h-3.5 w-3.5 transition-colors ${
-              wishlisted ? "fill-destructive text-destructive" : "text-foreground"
-            }`}
-          />
-        </button>
+        {canUseWishlist && (
+          <button
+            onClick={() => toggleWishlist(product)}
+            className="absolute top-1.5 right-1.5 p-1.5 bg-card/90 backdrop-blur-sm rounded-full opacity-100 transition-opacity hover:bg-card shadow-sm"
+            aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+          >
+            <Heart
+              className={`h-3.5 w-3.5 transition-colors ${
+                wishlisted ? "fill-destructive text-destructive" : "text-foreground"
+              }`}
+            />
+          </button>
+        )}
       </div>
 
       <div className="p-2 space-y-1 flex-1 flex flex-col">

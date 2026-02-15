@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { Product } from "@/types/product";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { useAuth } from "@/context/AuthContext";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductDetailGallery } from "@/components/products/ProductDetailGallery";
 import { formatCurrency } from "@/lib/utils";
@@ -18,6 +19,7 @@ export default function ProductDetail() {
   const { id } = useParams();
   const { addToCart } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [quantity, setQuantity] = useState(1);
 
@@ -86,7 +88,10 @@ export default function ProductDetail() {
     navigate("/order");
   };
 
-  const wishlisted = isWishlisted(typedProduct.id);
+  const canUseWishlist = Boolean(
+    user && !isAdmin && user.role === "user" && user.source !== "tracking"
+  );
+  const wishlisted = canUseWishlist ? isWishlisted(typedProduct.id) : false;
 
   const normalizedImages = (typedProduct.images ?? [])
     .map((src) => (typeof src === "string" ? src.trim() : ""))
@@ -196,22 +201,29 @@ export default function ProductDetail() {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="gold" size="lg" className="flex-1" onClick={handleAddToCart}>
+                  <Button
+                    variant="gold"
+                    size="lg"
+                    className={canUseWishlist ? "flex-1" : "w-full"}
+                    onClick={handleAddToCart}
+                  >
                     <ShoppingCart className="h-5 w-5 mr-2" />
                     Add to Cart
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    onClick={() => toggleWishlist(typedProduct)}
-                    aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                  >
-                    <Heart
-                      className={`h-5 w-5 ${
-                        wishlisted ? "fill-destructive text-destructive" : ""
-                      }`}
-                    />
-                  </Button>
+                  {canUseWishlist && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => toggleWishlist(typedProduct)}
+                      aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                    >
+                      <Heart
+                        className={`h-5 w-5 ${
+                          wishlisted ? "fill-destructive text-destructive" : ""
+                        }`}
+                      />
+                    </Button>
+                  )}
                 </div>
 
                 <Button variant="navy" size="lg" className="w-full" onClick={handleBuyNow}>
