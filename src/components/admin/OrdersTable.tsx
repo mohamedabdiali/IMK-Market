@@ -52,6 +52,13 @@ const toDateInputValue = (value?: string) => {
   return date.toISOString().slice(0, 10);
 };
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return format(date, "MMM dd, yyyy HH:mm");
+};
+
 export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprovePayment }: OrdersTableProps) {
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [isSavingTracking, setIsSavingTracking] = useState(false);
@@ -202,109 +209,172 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              Order Details - {selectedOrder?.orderTrackingId || selectedOrder?.trackingNumber || selectedOrder?.id}
+        <DialogContent className="h-[92vh] w-[96vw] max-w-6xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle className="text-xl">
+              Order Management - {selectedOrder?.orderTrackingId || selectedOrder?.trackingNumber || selectedOrder?.id}
             </DialogTitle>
           </DialogHeader>
           {selectedOrder && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-semibold text-sm text-muted-foreground">Customer</h4>
-                <p>{selectedOrder.customerName}</p>
-                <p className="text-sm text-muted-foreground">{selectedOrder.customerEmail}</p>
-                {selectedOrder.customerPhone && (
-                  <p className="text-sm text-muted-foreground">{selectedOrder.customerPhone}</p>
-                )}
+            <div className="h-[calc(92vh-78px)] overflow-y-auto px-6 py-5 space-y-6">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-lg border border-border/60 p-3">
+                  <div className="text-xs text-muted-foreground">Order Tracking ID</div>
+                  <div className="font-semibold">{selectedOrder.orderTrackingId || selectedOrder.trackingNumber || selectedOrder.id}</div>
+                </div>
+                <div className="rounded-lg border border-border/60 p-3">
+                  <div className="text-xs text-muted-foreground">Order ID</div>
+                  <div className="font-semibold">{selectedOrder.id}</div>
+                </div>
+                <div className="rounded-lg border border-border/60 p-3">
+                  <div className="text-xs text-muted-foreground">Placed On</div>
+                  <div className="font-semibold">{formatDateTime(selectedOrder.createdAt)}</div>
+                </div>
+                <div className="rounded-lg border border-border/60 p-3">
+                  <div className="text-xs text-muted-foreground">Items</div>
+                  <div className="font-semibold">{selectedOrder.items.reduce((sum, item) => sum + item.quantity, 0)} units</div>
+                </div>
+                <div className="rounded-lg border border-border/60 p-3">
+                  <div className="text-xs text-muted-foreground">Order Total</div>
+                  <div className="font-semibold">{formatCurrency(selectedOrder.total)}</div>
+                </div>
               </div>
-              <div>
-                <h4 className="font-semibold text-sm text-muted-foreground">Shipping Address</h4>
-                <p>{selectedOrder.shippingAddress}</p>
-              </div>
-              {(selectedOrder.paymentMethod || selectedOrder.paymentStatus) && (
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Payment</h4>
-                  {selectedOrder.paymentMethod && (
-                    <p className="capitalize">Method: {selectedOrder.paymentMethod.replace(/_/g, " ")}</p>
-                  )}
-                  {selectedOrder.paymentStatus && <p>Status: {selectedOrder.paymentStatus}</p>}
-                  {selectedOrder.paymentReference && (
-                    <p className="text-sm text-muted-foreground">
-                      Reference: {selectedOrder.paymentReference}
-                    </p>
-                  )}
-                  {selectedOrder.paymentId && (
-                    <p className="text-sm text-muted-foreground">
-                      Payment ID: {selectedOrder.paymentId}
-                    </p>
-                  )}
-                  {selectedOrder.paymentProofSubmittedAt && (
-                    <p className="text-sm text-muted-foreground">
-                      Proof Submitted: {format(new Date(selectedOrder.paymentProofSubmittedAt), "MMM dd, yyyy HH:mm")}
-                    </p>
-                  )}
-                  {selectedOrder.paymentProofApprovedAt && (
-                    <p className="text-sm text-muted-foreground">
-                      Proof Approved: {format(new Date(selectedOrder.paymentProofApprovedAt), "MMM dd, yyyy HH:mm")}
-                    </p>
-                  )}
-                  {(selectedOrder.paymentProofImage || selectedOrder.paymentProofVideo) && (
-                    <div className="grid sm:grid-cols-2 gap-3 mt-3">
-                      {selectedOrder.paymentProofImage && (
+
+              <div className="grid gap-4 xl:grid-cols-3">
+                <div className="rounded-xl border border-border/60 p-4 space-y-2">
+                  <h4 className="font-semibold">Customer Information</h4>
+                  <div className="text-sm"><span className="text-muted-foreground">Name:</span> {selectedOrder.customerName}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Email:</span> {selectedOrder.customerEmail}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Phone:</span> {selectedOrder.customerPhone || "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Shipping Address:</span> {selectedOrder.shippingAddress}</div>
+                </div>
+
+                <div className="rounded-xl border border-border/60 p-4 space-y-2">
+                  <h4 className="font-semibold">Order & Shipment Information</h4>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Badge className={statusColors[selectedOrder.status]} variant="outline">
+                      {selectedOrder.status}
+                    </Badge>
+                    {selectedOrder.paymentStatus && (
+                      <Badge variant="outline" className="capitalize">
+                        Payment: {selectedOrder.paymentStatus}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm"><span className="text-muted-foreground">Cargo Type:</span> {selectedOrder.cargoType || "Standard"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Carrier:</span> {selectedOrder.trackingCarrier || "IMK Logistics"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Tracking Number:</span> {selectedOrder.trackingNumber || "Not assigned"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Current Location:</span> {selectedOrder.currentLocation || "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Estimated Delivery:</span> {formatDateTime(selectedOrder.estimatedDelivery)}</div>
+                </div>
+
+                <div className="rounded-xl border border-border/60 p-4 space-y-3">
+                  <h4 className="font-semibold">Payment Information & Proof</h4>
+                  <div className="text-sm"><span className="text-muted-foreground">Method:</span> {selectedOrder.paymentMethod ? selectedOrder.paymentMethod.replace(/_/g, " ") : "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Status:</span> {selectedOrder.paymentStatus || "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Reference:</span> {selectedOrder.paymentReference || "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Payment ID:</span> {selectedOrder.paymentId || "N/A"}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Proof Submitted:</span> {formatDateTime(selectedOrder.paymentProofSubmittedAt)}</div>
+                  <div className="text-sm"><span className="text-muted-foreground">Proof Approved:</span> {formatDateTime(selectedOrder.paymentProofApprovedAt)}</div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-md border border-border/60 p-2">
+                      <p className="text-xs text-muted-foreground mb-2">Payment Image Proof</p>
+                      {selectedOrder.paymentProofImage ? (
                         <a href={selectedOrder.paymentProofImage} target="_blank" rel="noreferrer" className="block">
                           <img
                             src={selectedOrder.paymentProofImage}
                             alt="Payment proof"
-                            className="h-28 w-full rounded-md border border-border/60 object-cover"
+                            className="h-40 w-full rounded-md bg-muted/30 object-contain"
                           />
                         </a>
+                      ) : (
+                        <div className="h-40 w-full rounded-md border border-dashed border-border/70 bg-muted/20 grid place-items-center text-xs text-muted-foreground">
+                          No payment image uploaded
+                        </div>
                       )}
-                      {selectedOrder.paymentProofVideo && (
+                    </div>
+                    <div className="rounded-md border border-border/60 p-2">
+                      <p className="text-xs text-muted-foreground mb-2">Payment Video Proof</p>
+                      {selectedOrder.paymentProofVideo ? (
                         <video
                           src={selectedOrder.paymentProofVideo}
                           controls
-                          className="h-28 w-full rounded-md border border-border/60 object-cover"
+                          className="h-40 w-full rounded-md bg-muted/30 object-contain"
                         />
+                      ) : (
+                        <div className="h-40 w-full rounded-md border border-dashed border-border/70 bg-muted/20 grid place-items-center text-xs text-muted-foreground">
+                          No payment video uploaded
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
+
                   {selectedOrder.paymentMethod !== "cod" && selectedOrder.paymentStatus !== "paid" && (
-                    <div className="mt-3">
-                      <Button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            setIsApprovingPayment(true);
-                            await onApprovePayment(selectedOrder.id);
-                            setSelectedOrder(null);
-                          } catch {
-                            toast({
-                              title: "Payment approval failed",
-                              description: "Confirm that payment proof is uploaded, then try again.",
-                              variant: "destructive",
-                            });
-                          } finally {
-                            setIsApprovingPayment(false);
-                          }
-                        }}
-                        disabled={isApprovingPayment}
-                      >
-                        {isApprovingPayment ? "Approving..." : "Approve Payment"}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          setIsApprovingPayment(true);
+                          await onApprovePayment(selectedOrder.id);
+                          setSelectedOrder(null);
+                        } catch {
+                          toast({
+                            title: "Payment approval failed",
+                            description: "Confirm that payment proof is uploaded, then try again.",
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setIsApprovingPayment(false);
+                        }
+                      }}
+                      disabled={isApprovingPayment}
+                    >
+                      {isApprovingPayment ? "Approving..." : "Approve Payment"}
+                    </Button>
                   )}
                 </div>
-              )}
-              {selectedOrder.cargoType && (
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground">Cargo Type</h4>
-                  <p className="capitalize">{selectedOrder.cargoType}</p>
+              </div>
+
+              <div className="rounded-xl border border-border/60 p-4 space-y-3">
+                <h4 className="font-semibold">Full Order Items</h4>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product Name</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Unit Price</TableHead>
+                        <TableHead className="text-right">Line Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedOrder.items.map((item, idx) => (
+                        <TableRow key={`${item.productName}-${idx}`}>
+                          <TableCell>{item.productName}</TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.price)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(item.price * item.quantity)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              )}
-              <div className="rounded-lg border border-border/60 p-4 space-y-3">
-                <h4 className="font-semibold text-sm text-muted-foreground">Tracking Control</h4>
-                <div className="grid sm:grid-cols-2 gap-3">
+                <div className="grid gap-2 border-t pt-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <span className="text-muted-foreground">Total Quantity:</span>{" "}
+                    <span className="font-semibold">{selectedOrder.items.reduce((sum, item) => sum + item.quantity, 0)} units</span>
+                  </div>
+                  <div className="sm:text-right">
+                    <span className="text-muted-foreground">Grand Total:</span>{" "}
+                    <span className="font-semibold">{formatCurrency(selectedOrder.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border/60 p-4 space-y-3">
+                <h4 className="font-semibold">Tracking Control</h4>
+                <div className="grid gap-3 md:grid-cols-3">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Tracking Number</label>
                     <Input
@@ -326,6 +396,16 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                     />
                   </div>
                   <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Estimated Delivery</label>
+                    <Input
+                      type="date"
+                      value={trackingForm.estimatedDelivery}
+                      onChange={(event) =>
+                        setTrackingForm((prev) => ({ ...prev, estimatedDelivery: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Tracking URL</label>
                     <Input
                       value={trackingForm.trackingUrl}
@@ -335,7 +415,7 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                       placeholder="https://..."
                     />
                   </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="text-xs text-muted-foreground mb-1 block">Current Location</label>
                     <Input
                       value={trackingForm.currentLocation}
@@ -343,16 +423,6 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                         setTrackingForm((prev) => ({ ...prev, currentLocation: event.target.value }))
                       }
                       placeholder="Transit hub"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Estimated Delivery</label>
-                    <Input
-                      type="date"
-                      value={trackingForm.estimatedDelivery}
-                      onChange={(event) =>
-                        setTrackingForm((prev) => ({ ...prev, estimatedDelivery: event.target.value }))
-                      }
                     />
                   </div>
                 </div>
@@ -372,19 +442,20 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                   </Button>
                 </div>
               </div>
+
               {selectedOrder.trackingEvents && selectedOrder.trackingEvents.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-sm text-muted-foreground mb-2">Tracking Timeline</h4>
-                  <div className="space-y-2 max-h-44 overflow-auto pr-1">
+                <div className="rounded-xl border border-border/60 p-4">
+                  <h4 className="font-semibold mb-3">Tracking Timeline</h4>
+                  <div className="space-y-2 max-h-64 overflow-auto pr-1">
                     {selectedOrder.trackingEvents.map((event) => (
-                      <div key={event.id} className="rounded-md border border-border/60 p-2">
+                      <div key={event.id} className="rounded-md border border-border/60 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-medium">{event.title}</p>
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(event.eventAt), "MMM dd, yyyy HH:mm")}
+                            {formatDateTime(event.eventAt)}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground">{event.message}</p>
+                        <p className="text-sm text-muted-foreground">{event.message}</p>
                         {event.location && (
                           <p className="text-xs text-muted-foreground mt-1">Location: {event.location}</p>
                         )}
@@ -393,21 +464,6 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                   </div>
                 </div>
               )}
-              <div>
-                <h4 className="font-semibold text-sm text-muted-foreground mb-2">Items</h4>
-                <div className="space-y-2">
-                  {selectedOrder.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span>{item.productName} x{item.quantity}</span>
-                      <span>{formatCurrency(item.price * item.quantity)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t mt-3 pt-3 flex justify-between font-semibold">
-                  <span>Total</span>
-                  <span>{formatCurrency(selectedOrder.total)}</span>
-                </div>
-              </div>
             </div>
           )}
         </DialogContent>
