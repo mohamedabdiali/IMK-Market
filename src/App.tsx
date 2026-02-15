@@ -17,6 +17,7 @@ import Order from "./pages/Order";
 import TrackOrder from "./pages/TrackOrder";
 import MarketPrices from "./pages/MarketPrices";
 import Wishlist from "./pages/Wishlist";
+import Account from "./pages/Account";
 
 import NotFound from "./pages/NotFound";
 import AdminLogin from "./pages/admin/AdminLogin";
@@ -46,6 +47,7 @@ const App = () => (
                 <Route path="/products" element={<Products />} />
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/wishlist" element={<Wishlist />} />
+                <Route path="/account" element={<Account />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/sell" element={<Sell />} />

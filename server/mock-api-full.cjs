@@ -62,6 +62,12 @@ const CARGO_ESTIMATE_DAYS = {
 
 const normalizeText = (value) => (typeof value === 'string' ? value.trim() : '');
 const normalizePhone = (value) => (value || '').toString().replace(/[^\d+]/g, '');
+const normalizeCustomerPhone = (value) => {
+  const normalized = normalizePhone(value);
+  if (!normalized) return '';
+  return normalized.startsWith('+') ? normalized : `+${normalized}`;
+};
+const hashPassword = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const createTrackingNumber = () => `TRK-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
 
 const resolveEstimatedDeliveryIso = (cargoType, fromIso) => {
@@ -323,6 +329,8 @@ const ensureCategory = (name, image) => {
 const ensureUncategorized = () => ensureCategory('Uncategorized', '/mock-images/categories/default.svg');
 
 const isAbsoluteUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
+const isImagePayload = (value) => typeof value === 'string' && (value.startsWith('data:image/') || isAbsoluteUrl(value));
+const isVideoPayload = (value) => typeof value === 'string' && (value.startsWith('data:video/') || isAbsoluteUrl(value));
 const toPublicMediaUrl = (req, value) => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
@@ -462,6 +470,7 @@ let orders = [];
 })();
 
 let payments = [];
+let customerAccounts = [];
 let emailHistory = [
   {
     id: createId('EMAIL', 4),
@@ -528,6 +537,53 @@ app.get('/api/products/search/suggestions', (req, res) => {
   if (!q) return res.json([]);
   const suggestions = [...new Set(products.filter(p => p.name.toLowerCase().includes(q)).map(p => p.name))].slice(0, 10);
   res.json(suggestions);
+});
+
+app.post('/api/pending-products', (req, res) => {
+  const payload = req.body || {};
+  const name = (payload.name || '').toString().trim();
+  const category = (payload.category || '').toString().trim();
+  const description = (payload.description || '').toString().trim();
+  const sellerName = (payload.sellerName || '').toString().trim();
+  const sellerEmail = (payload.sellerEmail || '').toString().trim();
+  const location = (payload.location || '').toString().trim();
+  const phone = (payload.phone || '').toString().trim();
+  const image = (payload.image || '').toString().trim();
+  const video = payload.video ? payload.video.toString().trim() : '';
+  const price = Number(payload.price);
+
+  const fieldErrors = {};
+  if (name.length < 2) fieldErrors.name = ['Name is required'];
+  if (category.length < 2) fieldErrors.category = ['Category is required'];
+  if (!Number.isFinite(price) || price <= 0) fieldErrors.price = ['Price must be greater than zero'];
+  if (description.length < 8) fieldErrors.description = ['Description is required'];
+  if (sellerName.length < 2) fieldErrors.sellerName = ['Seller name is required'];
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sellerEmail)) fieldErrors.sellerEmail = ['Valid seller email is required'];
+  if (location.length < 2) fieldErrors.location = ['Location is required'];
+  if (phone.length < 6) fieldErrors.phone = ['Phone number is required'];
+  if (!isImagePayload(image)) fieldErrors.image = ['A valid image is required'];
+  if (video && !isVideoPayload(video)) fieldErrors.video = ['Video must be a valid URL or data URI'];
+  if (Object.keys(fieldErrors).length) {
+    return res.status(400).json({ error: 'Invalid payload', details: { fieldErrors } });
+  }
+
+  const pending = {
+    id: createId('PEND', 3),
+    name,
+    price,
+    category,
+    sellerName,
+    sellerEmail,
+    description,
+    image,
+    video: video || undefined,
+    phone,
+    location,
+    status: 'pending',
+    submittedAt: nowIso(),
+  };
+  pendingProducts.unshift(pending);
+  return res.status(201).json({ id: pending.id, status: pending.status, submittedAt: pending.submittedAt });
 });
 
 app.post('/api/orders', (req, res) => {
@@ -640,6 +696,8 @@ app.post('/api/payments/initiate', (req, res) => {
     shippingAddress,
     paymentMethod,
     cargoType,
+    paymentProofImage,
+    paymentProofVideo,
     items,
   } = req.body || {};
 
@@ -657,6 +715,13 @@ app.post('/api/payments/initiate', (req, res) => {
 
   if (normalizedItems.length === 0) {
     return res.status(400).json({ error: 'Invalid items' });
+  }
+
+  if (paymentProofImage && !isImagePayload(paymentProofImage.toString())) {
+    return res.status(400).json({ error: 'Invalid payment proof image' });
+  }
+  if (paymentProofVideo && !isVideoPayload(paymentProofVideo.toString())) {
+    return res.status(400).json({ error: 'Invalid payment proof video' });
   }
 
   const amount = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -677,6 +742,8 @@ app.post('/api/payments/initiate', (req, res) => {
     customerPhone,
     shippingAddress,
     cargoType: cargoType || undefined,
+    paymentProofImage: paymentProofImage ? paymentProofImage.toString() : undefined,
+    paymentProofVideo: paymentProofVideo ? paymentProofVideo.toString() : undefined,
     items: normalizedItems,
     orderId: undefined,
     createdAt,
@@ -701,6 +768,7 @@ app.post('/api/payments/initiate', (req, res) => {
     paymentUrl: record.paymentMethod === 'paystack' ? 'https://example.com/pay' : null,
     orderId: record.orderId,
     updatedAt: record.updatedAt,
+    proofUploaded: Boolean(record.paymentProofImage || record.paymentProofVideo),
   });
 });
 
@@ -761,6 +829,7 @@ app.get('/api/payments/:id', (req, res) => {
     orderId: payment.orderId,
     trackingNumber: payment.orderId ? orders.find((o) => o.id === payment.orderId)?.trackingNumber || null : null,
     updatedAt: payment.updatedAt,
+    proofUploaded: Boolean(payment.paymentProofImage || payment.paymentProofVideo),
   });
 });
 
@@ -781,6 +850,69 @@ app.get('/api/trending', (req, res) => {
 app.get('/api/featured', (req, res) => {
   const featured = products.filter(p => p.badge === 'New' || p.badge === 'Top Rated').slice(0, 12);
   res.json(featured.map((product) => toPublicProduct(product, req)));
+});
+
+app.post('/api/customers/register', (req, res) => {
+  const payload = req.body || {};
+  const name = normalizeText(payload.name) || 'Customer';
+  const email = normalizeText(payload.email);
+  const phone = normalizeCustomerPhone(payload.phone);
+  const password = (payload.password || '').toString();
+
+  const fieldErrors = {};
+  if (name.length < 2) fieldErrors.name = ['Name is required'];
+  if (phone.replace(/[^\d]/g, '').length < 7) fieldErrors.phone = ['Valid phone number is required'];
+  if (password.length < 6) fieldErrors.password = ['Password must be at least 6 characters'];
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fieldErrors.email = ['Invalid email address'];
+  if (Object.keys(fieldErrors).length > 0) {
+    return res.status(400).json({ error: 'Invalid payload', details: { fieldErrors } });
+  }
+
+  const exists = customerAccounts.find((account) => account.phone === phone);
+  if (exists) {
+    return res.status(409).json({ error: 'Phone number is already registered' });
+  }
+
+  const account = {
+    id: createId('CUST', 4),
+    name,
+    email: email || `${phone.replace(/[^\d]/g, '')}@customer.local`,
+    phone,
+    passwordHash: hashPassword(password),
+    role: 'user',
+    createdAt: nowIso(),
+  };
+  customerAccounts.unshift(account);
+  return res.status(201).json({
+    token: `customer-${account.id}`,
+    role: account.role,
+    name: account.name,
+    phone: account.phone,
+    email: account.email,
+  });
+});
+
+app.post('/api/customers/login', (req, res) => {
+  const payload = req.body || {};
+  const phone = normalizeCustomerPhone(payload.phone);
+  const password = (payload.password || '').toString();
+
+  if (phone.replace(/[^\d]/g, '').length < 7 || password.length < 1) {
+    return res.status(400).json({ error: 'Invalid credentials' });
+  }
+
+  const account = customerAccounts.find((entry) => entry.phone === phone);
+  if (!account || account.passwordHash !== hashPassword(password)) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  return res.json({
+    token: `customer-${account.id}`,
+    role: account.role,
+    name: account.name,
+    phone: account.phone,
+    email: account.email,
+  });
 });
 
 // ------------------------

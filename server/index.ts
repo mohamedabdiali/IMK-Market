@@ -66,6 +66,14 @@ const adminLoginLimiter = rateLimit({
   message: "Too many login attempts, please try again later.",
 });
 
+const customerAuthLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Too many authentication attempts. Please try again later.",
+});
+
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-prod";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "info@imkmarket.com";
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || "+232-76-123-456";
@@ -179,6 +187,25 @@ function normalizePhone(value?: string | null) {
   return value.replace(/[^\d+]/g, "");
 }
 
+function normalizeCustomerPhone(value?: string | null) {
+  const normalized = normalizePhone(value);
+  if (!normalized) return "";
+  return normalized.startsWith("+") ? normalized : `+${normalized}`;
+}
+
+function customerPhoneToEmail(phone: string) {
+  const digits = phone.replace(/[^\d]/g, "");
+  return `phone-${digits}@customer.local`;
+}
+
+function isValidImageMedia(value: string) {
+  return value.startsWith("data:image/") || /^https?:\/\//i.test(value);
+}
+
+function isValidVideoMedia(value: string) {
+  return value.startsWith("data:video/") || /^https?:\/\//i.test(value);
+}
+
 function resolveEstimatedDelivery(cargoType?: string | null, from = new Date()) {
   const key = (cargoType || "").toLowerCase();
   const days = CARGO_ESTIMATE_DAYS[key] ?? 6;
@@ -205,9 +232,18 @@ const orderItemSchema = z.object({
   price: z.number().min(0),
 });
 type OrderItemPayload = z.infer<typeof orderItemSchema>;
+
+const storedPaymentItemsSchema = z.object({
+  orderItems: z.array(orderItemSchema).min(1),
+  proofImage: z.string().optional(),
+  proofVideo: z.string().optional(),
+});
+
 function parseOrderItems(value: unknown): OrderItemPayload[] {
-  const parsed = z.array(orderItemSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
+  const direct = z.array(orderItemSchema).safeParse(value);
+  if (direct.success) return direct.data;
+  const wrapped = storedPaymentItemsSchema.safeParse(value);
+  return wrapped.success ? wrapped.data.orderItems : [];
 }
 
 async function appendTrackingEvent(payload: {
@@ -545,6 +581,14 @@ app.post("/api/payments/initiate", async (req, res) => {
     shippingAddress: z.string().min(5),
     paymentMethod: z.enum(["orange_money", "afrimoney", "qmoney", "paystack", "stripe"]),
     cargoType: z.string().optional(),
+    paymentProofImage: z
+      .string()
+      .optional()
+      .refine((value) => !value || isValidImageMedia(value), "Invalid proof image"),
+    paymentProofVideo: z
+      .string()
+      .optional()
+      .refine((value) => !value || isValidVideoMedia(value), "Invalid proof video"),
     items: z.array(orderItemSchema).min(1),
   });
 
@@ -561,6 +605,8 @@ app.post("/api/payments/initiate", async (req, res) => {
     paymentMethod,
     items,
     cargoType,
+    paymentProofImage,
+    paymentProofVideo,
   } = parsed.data;
   const amount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const paymentId = createPaymentId();
@@ -572,6 +618,14 @@ app.post("/api/payments/initiate", async (req, res) => {
     quantity: item.quantity,
     price: item.price,
   }));
+  const storedPaymentItems: Prisma.InputJsonValue =
+    paymentProofImage || paymentProofVideo
+      ? ({
+          orderItems: jsonItems,
+          ...(paymentProofImage ? { proofImage: paymentProofImage } : {}),
+          ...(paymentProofVideo ? { proofVideo: paymentProofVideo } : {}),
+        } as Prisma.InputJsonValue)
+      : (jsonItems as Prisma.InputJsonValue);
 
   try {
     const created = await prisma.payment.create({
@@ -587,7 +641,7 @@ app.post("/api/payments/initiate", async (req, res) => {
         customerPhone,
         shippingAddress,
         cargoType,
-        items: jsonItems as Prisma.InputJsonValue,
+        items: storedPaymentItems,
       },
     });
 
@@ -933,6 +987,93 @@ app.get("/api/orders/track", async (req, res) => {
   }
 });
 
+app.post("/api/customers/register", customerAuthLimiter, async (req, res) => {
+  const schema = z.object({
+    name: z.string().trim().min(2).max(120).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    phone: z.string().trim().min(6).max(30),
+    password: z.string().min(6).max(128),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const normalizedPhone = normalizeCustomerPhone(parsed.data.phone);
+  if (normalizedPhone.replace(/[^\d]/g, "").length < 7) {
+    return res.status(400).json({ error: "Invalid payload", details: { fieldErrors: { phone: ["Valid phone number is required"] } } });
+  }
+  const customerEmail = customerPhoneToEmail(normalizedPhone);
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email: customerEmail } });
+    if (existing) {
+      return res.status(409).json({ error: "Phone number is already registered" });
+    }
+
+    const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
+    const user = await prisma.user.create({
+      data: {
+        email: customerEmail,
+        passwordHash,
+        role: "user",
+      },
+    });
+
+    const token = jwt.sign({ email: user.email, role: user.role, phone: normalizedPhone }, JWT_SECRET, { expiresIn: "12h" });
+    res.status(201).json({
+      token,
+      role: user.role,
+      name: parsed.data.name || "Customer",
+      phone: normalizedPhone,
+      email: parsed.data.email || customerEmail,
+    });
+  } catch (e) {
+    console.error("Customer registration error", e);
+    res.status(500).json({ error: "Failed to create customer account" });
+  }
+});
+
+app.post("/api/customers/login", customerAuthLimiter, async (req, res) => {
+  const schema = z.object({
+    phone: z.string().trim().min(6).max(30),
+    password: z.string().min(1).max(128),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+  }
+
+  const normalizedPhone = normalizeCustomerPhone(parsed.data.phone);
+  if (normalizedPhone.replace(/[^\d]/g, "").length < 7) {
+    return res.status(400).json({ error: "Invalid credentials" });
+  }
+  const customerEmail = customerPhoneToEmail(normalizedPhone);
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email: customerEmail } });
+    if (!user || user.role !== "user") {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ email: user.email, role: user.role, phone: normalizedPhone }, JWT_SECRET, { expiresIn: "12h" });
+    res.json({
+      token,
+      role: user.role,
+      name: "Customer",
+      phone: normalizedPhone,
+      email: user.email,
+    });
+  } catch (e) {
+    console.error("Customer login error", e);
+    res.status(500).json({ error: "Failed to login customer" });
+  }
+});
+
 app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
   try {
     const schema = z.object({
@@ -1259,10 +1400,66 @@ app.patch("/api/admin/orders/:id/tracking", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/pending-products", async (req, res) => {
+  try {
+    const schema = z.object({
+      name: z.string().trim().min(2).max(160),
+      category: z.string().trim().min(2).max(120),
+      price: z.coerce.number().positive().max(100000000),
+      description: z.string().trim().min(8).max(4000),
+      sellerName: z.string().trim().min(2).max(120),
+      sellerEmail: z.string().trim().email().max(255),
+      location: z.string().trim().min(2).max(120),
+      phone: z.string().trim().min(6).max(40),
+      image: z.string().trim().min(1),
+      video: z.string().trim().min(1).optional().nullable(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
+    }
+
+    if (!isValidImageMedia(parsed.data.image)) {
+      return res.status(400).json({ error: "Invalid payload", details: { fieldErrors: { image: ["A valid image is required"] } } });
+    }
+    if (parsed.data.video && !isValidVideoMedia(parsed.data.video)) {
+      return res
+        .status(400)
+        .json({ error: "Invalid payload", details: { fieldErrors: { video: ["Video must be a valid URL or data URI"] } } });
+    }
+
+    const detailsBlock = [`Location: ${parsed.data.location}`, `Phone: ${parsed.data.phone}`];
+    if (parsed.data.video) {
+      detailsBlock.push("Video: uploaded");
+    }
+    const description = `${parsed.data.description}\n\n${detailsBlock.join("\n")}`;
+
+    const pending = await prisma.pendingProduct.create({
+      data: {
+        name: parsed.data.name,
+        price: parsed.data.price,
+        category: parsed.data.category,
+        sellerName: parsed.data.sellerName,
+        sellerEmail: parsed.data.sellerEmail,
+        description,
+        image: parsed.data.image,
+        status: "pending",
+        submittedAt: new Date(),
+      },
+    });
+
+    res.status(201).json({ id: pending.id, status: pending.status, submittedAt: pending.submittedAt });
+  } catch (e) {
+    console.error("Create pending product error", e);
+    res.status(500).json({ error: "Failed to submit product" });
+  }
+});
+
 app.get("/api/admin/pending-products", requireAdmin, async (_req, res) => {
   try {
     const pending = await prisma.pendingProduct.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: { submittedAt: "desc" },
     });
     res.json(pending);
   } catch (e) {

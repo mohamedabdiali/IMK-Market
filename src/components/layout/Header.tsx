@@ -14,6 +14,7 @@ const navItems = [
   { label: "Sell Products", href: "/sell" },
   { label: "Order Products", href: "/order" },
   { label: "Track Order", href: "/track-order" },
+  { label: "Account", href: "/account" },
   { label: "Wishlist", href: "/wishlist" },
   { label: "About Us", href: "/about" },
   { label: "Contact", href: "/contact" },
@@ -101,7 +102,7 @@ export function Header() {
               {user
                 ? user.source === "tracking"
                   ? `Tracking session: ${user.trackingOrderId || "Customer"}`
-                  : `Signed in: ${user.email}`
+                  : `Signed in: ${user.phone || user.email}`
                 : "Welcome, Guest"}
             </span>
           </div>
@@ -162,7 +163,7 @@ export function Header() {
               )}
             </Button>
             
-            <Button variant="ghost" size="icon" className="hidden md:flex">
+            <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => navigate("/account")} aria-label="Account">
               <User className="h-5 w-5" />
             </Button>
 

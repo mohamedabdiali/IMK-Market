@@ -43,6 +43,11 @@ export const api = {
   },
   getProduct: (id: string) => apiFetch(`/products/${id}`),
   getCategories: () => apiFetch("/categories"),
+  submitSellerProduct: (payload: unknown) =>
+    apiFetch("/pending-products", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createOrder: (payload: unknown) =>
     apiFetch("/orders", { method: "POST", body: JSON.stringify(payload) }),
   trackOrder: (params: { orderId?: string; trackingNumber?: string; email?: string; phone?: string }) => {
@@ -57,6 +62,10 @@ export const api = {
   initiatePayment: (payload: unknown) =>
     apiFetch("/payments/initiate", { method: "POST", body: JSON.stringify(payload) }),
   getPaymentStatus: (id: string) => apiFetch(`/payments/${id}`),
+  customerRegister: (payload: { name?: string; email?: string; phone: string; password: string }) =>
+    apiFetch("/customers/register", { method: "POST", body: JSON.stringify(payload) }),
+  customerLogin: (payload: { phone: string; password: string }) =>
+    apiFetch("/customers/login", { method: "POST", body: JSON.stringify(payload) }),
   adminLogin: (payload: { email: string; password: string }) =>
     apiFetch("/admin/login", { method: "POST", body: JSON.stringify(payload) }),
   getAdminOrders: (token: string) =>

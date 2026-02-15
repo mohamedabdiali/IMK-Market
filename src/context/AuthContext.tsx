@@ -3,8 +3,10 @@ import { api } from "@/lib/api";
 
 interface User {
   email: string;
+  name?: string;
+  phone?: string;
   role: "admin" | "user";
-  source?: "admin" | "tracking";
+  source?: "admin" | "tracking" | "customer";
   trackingOrderId?: string;
   trackingNumber?: string;
 }
@@ -13,6 +15,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<boolean>;
+  loginCustomer: (phone: string, password: string) => Promise<boolean>;
+  registerCustomer: (payload: { name?: string; email?: string; phone: string; password: string }) => Promise<boolean>;
   loginAsTrackingCustomer: (orderId: string, trackingNumber: string) => void;
   logout: () => void;
   isAdmin: boolean;
@@ -52,6 +56,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
+  const applySession = (nextUser: User, nextToken: string | null) => {
+    setUser(nextUser);
+    setToken(nextToken);
+    safeSetItem(STORAGE_KEY, JSON.stringify(nextUser));
+    if (nextToken) {
+      safeSetItem(TOKEN_KEY, nextToken);
+    } else {
+      safeRemoveItem(TOKEN_KEY);
+    }
+  };
+
   useEffect(() => {
     const storedUser = safeGetItem(STORAGE_KEY);
     const storedToken = safeGetItem(TOKEN_KEY);
@@ -71,10 +86,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await api.adminLogin({ email, password });
       const newUser: User = { email: result.email, role: result.role, source: "admin" };
-      setUser(newUser);
-      setToken(result.token);
-      safeSetItem(STORAGE_KEY, JSON.stringify(newUser));
-      safeSetItem(TOKEN_KEY, result.token);
+      applySession(newUser, result.token);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const loginCustomer = async (phone: string, password: string): Promise<boolean> => {
+    try {
+      const result = await api.customerLogin({ phone, password });
+      const newUser: User = {
+        email: result.email || "",
+        name: result.name,
+        phone: result.phone,
+        role: "user",
+        source: "customer",
+      };
+      applySession(newUser, result.token);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const registerCustomer = async (payload: {
+    name?: string;
+    email?: string;
+    phone: string;
+    password: string;
+  }): Promise<boolean> => {
+    try {
+      const result = await api.customerRegister(payload);
+      const newUser: User = {
+        email: result.email || "",
+        name: result.name,
+        phone: result.phone,
+        role: "user",
+        source: "customer",
+      };
+      applySession(newUser, result.token);
       return true;
     } catch {
       return false;
@@ -91,10 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       trackingOrderId: normalizedOrderId,
       trackingNumber: normalizedTracking,
     };
-    setUser(trackingUser);
-    setToken(null);
-    safeSetItem(STORAGE_KEY, JSON.stringify(trackingUser));
-    safeRemoveItem(TOKEN_KEY);
+    applySession(trackingUser, null);
   };
 
   const logout = () => {
@@ -108,7 +156,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = Boolean(user);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, loginAsTrackingCustomer, logout, isAdmin, isAuthenticated }}>
+    <AuthContext.Provider
+      value={{ user, token, login, loginCustomer, registerCustomer, loginAsTrackingCustomer, logout, isAdmin, isAuthenticated }}
+    >
       {children}
     </AuthContext.Provider>
   );

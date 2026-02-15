@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -6,7 +7,7 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Minus, Plus, ShoppingCart, Package, CreditCard, ShieldCheck } from "lucide-react";
+import { CreditCard, Image as ImageIcon, Minus, Package, Plus, ShieldCheck, ShoppingCart, Video, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
@@ -39,6 +40,10 @@ const paymentNumbers: Record<string, string> = {
   afrimoney: "+232-76-123-456",
   qmoney: "+232-76-123-456",
 };
+
+const PAYMENT_PROOF_IMAGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
+const PAYMENT_PROOF_VIDEO_MAX_FILE_SIZE = 8 * 1024 * 1024;
+const PAYMENT_PROOF_IMAGE_MAX_DIMENSION = 1400;
 
 type PaymentSession = {
   id: string;
@@ -109,6 +114,15 @@ export default function Order() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderResult, setOrderResult] = useState<{ id: string; total: number; paymentStatus: string; trackingNumber?: string | null } | null>(null);
   const [paymentState, setPaymentState] = useState<PaymentSession | null>(null);
+  const [paymentProofImage, setPaymentProofImage] = useState("");
+  const [paymentProofImageName, setPaymentProofImageName] = useState("");
+  const [paymentProofVideo, setPaymentProofVideo] = useState("");
+  const [paymentProofVideoName, setPaymentProofVideoName] = useState("");
+  const [paymentProofVideoPreviewUrl, setPaymentProofVideoPreviewUrl] = useState("");
+  const [isImageProcessing, setIsImageProcessing] = useState(false);
+  const [isVideoProcessing, setIsVideoProcessing] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const isPaymentPending = paymentState?.status === "pending";
 
   const orderItems = useMemo(
@@ -123,6 +137,25 @@ export default function Order() {
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const selectedPaymentNumber = paymentNumbers[formData.paymentMethod] || "+232-76-123-456";
+
+  const clearPaymentProofImage = () => {
+    setPaymentProofImage("");
+    setPaymentProofImageName("");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const clearPaymentProofVideo = () => {
+    setPaymentProofVideo("");
+    setPaymentProofVideoName("");
+    if (paymentProofVideoPreviewUrl) URL.revokeObjectURL(paymentProofVideoPreviewUrl);
+    setPaymentProofVideoPreviewUrl("");
+    if (videoInputRef.current) videoInputRef.current.value = "";
+  };
+
+  const clearPaymentProofs = () => {
+    clearPaymentProofImage();
+    clearPaymentProofVideo();
+  };
 
   useEffect(() => {
     if (!paymentState || paymentState.status !== "pending") return;
@@ -148,6 +181,138 @@ export default function Order() {
     return () => window.clearInterval(interval);
   }, [paymentState, clearCart]);
 
+  useEffect(() => {
+    return () => {
+      if (paymentProofVideoPreviewUrl) URL.revokeObjectURL(paymentProofVideoPreviewUrl);
+    };
+  }, [paymentProofVideoPreviewUrl]);
+
+  useEffect(() => {
+    if (formData.paymentMethod === "cod") {
+      clearPaymentProofs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.paymentMethod]);
+
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Unable to read file."));
+      reader.readAsDataURL(file);
+    });
+
+  const prepareImage = async (file: File) => {
+    const rawDataUrl = await readFileAsDataUrl(file);
+    if (!rawDataUrl.startsWith("data:image/")) return rawDataUrl;
+    const img = new Image();
+    const loaded = new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Unable to process image."));
+    });
+    img.src = rawDataUrl;
+    await loaded;
+
+    const scale = Math.min(1, PAYMENT_PROOF_IMAGE_MAX_DIMENSION / Math.max(img.width, img.height));
+    if (scale === 1) return rawDataUrl;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return rawDataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  };
+
+  const handleProofImageSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid image file",
+        description: "Please select a valid image file.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > PAYMENT_PROOF_IMAGE_MAX_FILE_SIZE) {
+      toast({
+        title: "Image too large",
+        description: "Use an image smaller than 5MB.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    setIsImageProcessing(true);
+    try {
+      const prepared = await prepareImage(file);
+      setPaymentProofImage(prepared);
+      setPaymentProofImageName(file.name);
+    } catch (error) {
+      toast({
+        title: "Image upload failed",
+        description: error instanceof Error ? error.message : "Please try another image.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImageProcessing(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleProofVideoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("video/")) {
+      toast({
+        title: "Invalid video file",
+        description: "Please select a valid video file.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > PAYMENT_PROOF_VIDEO_MAX_FILE_SIZE) {
+      toast({
+        title: "Video too large",
+        description: "Use a video smaller than 8MB.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    setIsVideoProcessing(true);
+    try {
+      const encodedVideo = await readFileAsDataUrl(file);
+      if (!encodedVideo.startsWith("data:video/")) {
+        throw new Error("Unsupported video format.");
+      }
+
+      if (paymentProofVideoPreviewUrl) URL.revokeObjectURL(paymentProofVideoPreviewUrl);
+      setPaymentProofVideoPreviewUrl(URL.createObjectURL(file));
+      setPaymentProofVideo(encodedVideo);
+      setPaymentProofVideoName(file.name);
+    } catch (error) {
+      toast({
+        title: "Video upload failed",
+        description: error instanceof Error ? error.message : "Please try another video.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVideoProcessing(false);
+      event.target.value = "";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) {
@@ -158,6 +323,16 @@ export default function Order() {
       });
       return;
     }
+
+    if (isImageProcessing || isVideoProcessing) {
+      toast({
+        title: "Media is still processing",
+        description: "Please wait until payment proof upload finishes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (formData.paymentMethod === "cod") {
@@ -168,10 +343,13 @@ export default function Order() {
           shippingAddress: formData.address,
           paymentMethod: formData.paymentMethod,
           cargoType: formData.cargoType || undefined,
+          paymentProofImage: paymentProofImage || undefined,
+          paymentProofVideo: paymentProofVideo || undefined,
           items: orderItems,
         });
         setOrderResult(result as { id: string; total: number; paymentStatus: string; trackingNumber?: string | null });
         setPaymentState(null);
+        clearPaymentProofs();
         clearCart();
         toast({
           title: "Order Placed!",
@@ -185,6 +363,8 @@ export default function Order() {
           shippingAddress: formData.address,
           paymentMethod: formData.paymentMethod,
           cargoType: formData.cargoType || undefined,
+          paymentProofImage: paymentProofImage || undefined,
+          paymentProofVideo: paymentProofVideo || undefined,
           items: orderItems,
         });
         setPaymentState(payment as PaymentSession);
@@ -378,16 +558,109 @@ export default function Order() {
                       </div>
                     </div>
 
+                    {formData.paymentMethod !== "cod" && (
+                      <div className="space-y-4 rounded-xl border border-border bg-secondary/20 p-4">
+                        <div>
+                          <h3 className="text-sm font-semibold">Payment Proof Upload (Optional)</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Upload a receipt screenshot or transaction video for faster verification.
+                          </p>
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Proof Image</label>
+                            <Input
+                              ref={imageInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleProofImageSelect}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              className="w-full border-2 border-dashed border-border rounded-lg p-3 text-center hover:border-accent/50 transition-colors"
+                            >
+                              {paymentProofImage ? (
+                                <img
+                                  src={paymentProofImage}
+                                  alt="Payment proof"
+                                  className="mx-auto h-28 w-full rounded-md object-cover"
+                                />
+                              ) : (
+                                <div className="py-4">
+                                  <ImageIcon className="h-7 w-7 mx-auto text-muted-foreground mb-2" />
+                                  <p className="text-xs text-muted-foreground">Upload image (max 5MB)</p>
+                                </div>
+                              )}
+                            </button>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="text-xs text-muted-foreground truncate">
+                                {paymentProofImageName || "No image selected"}
+                              </p>
+                              {paymentProofImage && (
+                                <Button type="button" variant="ghost" size="sm" onClick={clearPaymentProofImage} className="h-7 px-2 text-xs">
+                                  <X className="h-3 w-3 mr-1" />
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Proof Video</label>
+                            <Input
+                              ref={videoInputRef}
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={handleProofVideoSelect}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => videoInputRef.current?.click()}
+                              className="w-full border-2 border-dashed border-border rounded-lg p-3 text-center hover:border-accent/50 transition-colors"
+                            >
+                              {paymentProofVideoPreviewUrl ? (
+                                <video
+                                  src={paymentProofVideoPreviewUrl}
+                                  controls
+                                  className="mx-auto h-28 w-full rounded-md object-cover"
+                                />
+                              ) : (
+                                <div className="py-4">
+                                  <Video className="h-7 w-7 mx-auto text-muted-foreground mb-2" />
+                                  <p className="text-xs text-muted-foreground">Upload video (max 8MB)</p>
+                                </div>
+                              )}
+                            </button>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="text-xs text-muted-foreground truncate">
+                                {paymentProofVideoName || "No video selected"}
+                              </p>
+                              {paymentProofVideo && (
+                                <Button type="button" variant="ghost" size="sm" onClick={clearPaymentProofVideo} className="h-7 px-2 text-xs">
+                                  <X className="h-3 w-3 mr-1" />
+                                  Remove
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <Button
                       type="submit"
                       variant="gold"
                       size="lg"
                       className="w-full"
-                      disabled={isSubmitting || isPaymentPending}
+                      disabled={isSubmitting || isPaymentPending || isImageProcessing || isVideoProcessing}
                     >
                       {isSubmitting
                         ? "Processing..."
-                        : formData.paymentMethod === "cod"
+                        : isImageProcessing || isVideoProcessing
+                          ? "Processing Media..."
+                          : formData.paymentMethod === "cod"
                           ? "Place Order"
                           : "Proceed to Payment"}
                     </Button>
