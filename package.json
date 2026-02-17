@@ -7,7 +7,7 @@
     "dev:web": "vite",
     "dev": "node scripts/dev-mock.mjs",
     "dev:mock": "node scripts/dev-mock.mjs",
-    "build": "vite build",
+    "build": "prisma generate && vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",

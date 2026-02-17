@@ -2236,6 +2236,11 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 const port = Number(process.env.API_PORT || process.env.PORT || 5050);
-app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
-});
+
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`API listening on http://localhost:${port}`);
+  });
+}
+
+export default app;
