@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { nanoid } from "nanoid";
-import prisma from "./prisma";
+import prisma from "./prisma.js";
 
 // ============================================
 // SEED DATA DEFINITIONS
@@ -199,7 +199,7 @@ async function main() {
   // 3. CREATE GLOBAL ROLES
   // ============================================
   console.log("🎭 Creating global roles...");
-  
+
   const superAdminRole = await prisma.role.upsert({
     where: { name_tenantId: { name: "Super Admin", tenantId: null } },
     update: {},
@@ -291,7 +291,7 @@ async function main() {
   // 5. CREATE TENANT-SPECIFIC ROLES
   // ============================================
   console.log("🎯 Creating IMK-Market roles...");
-  
+
   const managerRole = await prisma.role.upsert({
     where: { name_tenantId: { name: "Manager", tenantId: imkTenant.id } },
     update: {},
@@ -363,7 +363,7 @@ async function main() {
   // 6. CREATE IMK-MARKET TEAM ACCOUNTS
   // ============================================
   console.log("👥 Creating IMK-Market team accounts...");
-  
+
   const managerPassword = "Manager@123";
   const salesPassword = "Sales@123";
 
@@ -591,38 +591,38 @@ async function main() {
   // ============================================
   // SUMMARY
   // ============================================
-  console.log("=" .repeat(60));
+  console.log("=".repeat(60));
   console.log("✅ DATABASE SEEDING COMPLETED SUCCESSFULLY!");
-  console.log("=" .repeat(60));
+  console.log("=".repeat(60));
   console.log("\n📋 ACCOUNT CREDENTIALS:\n");
   console.log("🔴 SUPER ADMIN (Platform Owner):");
   console.log(`   Email: admin@primmesisc.com`);
   console.log(`   Password: ${superAdminPassword}`);
   console.log(`   Access: Full platform control\n`);
-  
+
   console.log("🔵 IMK-MARKET MANAGER:");
   console.log(`   Email: manager@imk-market.com`);
   console.log(`   Password: ${managerPassword}`);
   console.log(`   Access: Full IMK-Market tenant access\n`);
-  
+
   console.log("🟢 SALES ASSOCIATE:");
   console.log(`   Email: sales@imk-market.com`);
   console.log(`   Password: ${salesPassword}`);
   console.log(`   Access: Orders & Products (limited)\n`);
-  
+
   console.log("🟡 DEMO SELLER:");
   console.log(`   Email: seller@demo.com`);
   console.log(`   Password: ${sellerPassword}`);
   console.log(`   Access: Own products management\n`);
-  
+
   console.log("🟣 DEMO CUSTOMER:");
   console.log(`   Email: customer@demo.com`);
   console.log(`   Password: ${customerPassword}`);
   console.log(`   Access: Shopping & orders\n`);
-  
-  console.log("=" .repeat(60));
+
+  console.log("=".repeat(60));
   console.log("⚠️  IMPORTANT: Save the Super Admin password securely!");
-  console.log("=" .repeat(60));
+  console.log("=".repeat(60));
 }
 
 main()
