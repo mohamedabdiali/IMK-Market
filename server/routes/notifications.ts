@@ -1,7 +1,7 @@
 // Notification Routes
 import { Router } from "express";
-import prisma from "../prisma";
-import { authenticate, AuthRequest } from "../auth-utils";
+import prisma from "../prisma.js";
+import { authenticate, AuthRequest } from "../auth-utils.js";
 
 const router = Router();
 

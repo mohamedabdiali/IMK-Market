@@ -10,8 +10,8 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { Prisma } from "@prisma/client";
-import prisma from "./prisma";
-import { EmailService } from "./email";
+import prisma from "./prisma.js";
+import { EmailService } from "./email.js";
 
 // Startup validation for critical configuration
 if (!process.env.DATABASE_URL) {
@@ -127,10 +127,10 @@ const emailService = new EmailService(BRAND_NAME, SUPPORT_EMAIL, SUPPORT_PHONE);
 // ============================================
 // IMPORT NEW RBAC ROUTES
 // ============================================
-import authRoutes from "./routes/auth";
-import superAdminRoutes from "./routes/super-admin";
-import sellerRoutes from "./routes/sellers";
-import notificationRoutes from "./routes/notifications";
+import authRoutes from "./routes/auth.js";
+import superAdminRoutes from "./routes/super-admin.js";
+import sellerRoutes from "./routes/sellers.js";
+import notificationRoutes from "./routes/notifications.js";
 
 // ============================================
 // MOUNT NEW ROUTES
@@ -560,7 +560,7 @@ async function ensureCategory(name: string) {
   return category;
 }
 
-import { verifyToken, AuthUser } from "./auth-utils";
+import { verifyToken, AuthUser } from "./auth-utils.js";
 
 function requireAdmin(req: any, res: express.Response, next: express.NextFunction) {
   const auth = req.headers.authorization;

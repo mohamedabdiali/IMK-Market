@@ -1,7 +1,7 @@
 // Seller Routes
 import { Router } from "express";
 import { z } from "zod";
-import prisma from "../prisma";
+import prisma from "../prisma.js";
 import {
     authenticate,
     AuthRequest,
@@ -9,7 +9,7 @@ import {
     createAuditLog,
     createNotification,
     notifyRole
-} from "../auth-utils";
+} from "../auth-utils.js";
 
 const router = Router();
 

@@ -1,7 +1,7 @@
 // Authentication and Authorization Utilities
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import prisma from "./prisma";
+import prisma from "./prisma.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-prod";
 

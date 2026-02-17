@@ -2,7 +2,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import prisma from "./prisma";
+import prisma from "./prisma.js";
 import {
     generateToken,
     authenticate,
@@ -11,7 +11,7 @@ import {
     notifySuperAdmins,
     notifyRole,
     createNotification
-} from "./auth-utils";
+} from "./auth-utils.js";
 
 const router = Router();
 
