@@ -13,6 +13,14 @@ import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { EmailService } from "./email";
 
+// Startup validation for critical configuration
+if (!process.env.DATABASE_URL) {
+  console.error("CRITICAL ERROR: DATABASE_URL environment variable is not set.");
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+    process.exit(1);
+  }
+}
+
 const app = express();
 type RequestWithRawBody = express.Request & { rawBody?: Buffer };
 
@@ -2124,7 +2132,9 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const port = Number(process.env.API_PORT || process.env.PORT || 5050);
 
-if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+const isServerless = process.env.VERCEL === "1" || process.env.VERCEL === "true" || !!process.env.VERCEL;
+
+if (!isServerless) {
   app.listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });

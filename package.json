@@ -8,6 +8,7 @@
     "dev": "node scripts/dev-mock.mjs",
     "dev:mock": "node scripts/dev-mock.mjs",
     "build": "prisma generate && vite build",
+    "postinstall": "prisma generate",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
