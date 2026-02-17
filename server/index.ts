@@ -421,7 +421,7 @@ async function createOrderRecord(payload: {
   paymentStatus: "pending" | "initialized" | "paid" | "failed";
   paymentReference?: string;
   cargoType?: string;
-  items: { productId?: string | number; productName: string; quantity: number; price: number }[];
+  items: OrderItemPayload[];
 }) {
   const total = payload.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const id = createOrderId();
@@ -1274,120 +1274,7 @@ app.get("/api/orders/track", async (req, res) => {
   }
 });
 
-app.post("/api/customers/register", customerAuthLimiter, async (req, res) => {
-  const schema = z.object({
-    name: z.string().trim().min(2).max(120).optional(),
-    email: z.string().trim().email().max(255).optional(),
-    phone: z.string().trim().min(6).max(30),
-    password: z.string().min(6).max(128),
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
-  }
-
-  const normalizedPhone = normalizeCustomerPhone(parsed.data.phone);
-  if (normalizedPhone.replace(/[^\d]/g, "").length < 7) {
-    return res.status(400).json({ error: "Invalid payload", details: { fieldErrors: { phone: ["Valid phone number is required"] } } });
-  }
-  const customerEmail = customerPhoneToEmail(normalizedPhone);
-
-  try {
-    const existing = await prisma.user.findUnique({ where: { email: customerEmail } });
-    if (existing) {
-      return res.status(409).json({ error: "Phone number is already registered" });
-    }
-
-    const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
-    const user = await prisma.user.create({
-      data: {
-        email: customerEmail,
-        passwordHash,
-        role: "user",
-      },
-    });
-
-    const token = jwt.sign({ email: user.email, role: user.role, phone: normalizedPhone }, JWT_SECRET, { expiresIn: "12h" });
-    res.status(201).json({
-      token,
-      role: user.role,
-      name: parsed.data.name || "Customer",
-      phone: normalizedPhone,
-      email: parsed.data.email || customerEmail,
-    });
-  } catch (e) {
-    console.error("Customer registration error", e);
-    res.status(500).json({ error: "Failed to create customer account" });
-  }
-});
-
-app.post("/api/customers/login", customerAuthLimiter, async (req, res) => {
-  const schema = z.object({
-    phone: z.string().trim().min(6).max(30),
-    password: z.string().min(1).max(128),
-  });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten() });
-  }
-
-  const normalizedPhone = normalizeCustomerPhone(parsed.data.phone);
-  if (normalizedPhone.replace(/[^\d]/g, "").length < 7) {
-    return res.status(400).json({ error: "Invalid credentials" });
-  }
-  const customerEmail = customerPhoneToEmail(normalizedPhone);
-
-  try {
-    const user = await prisma.user.findUnique({ where: { email: customerEmail } });
-    if (!user || user.role !== "user") {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash);
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    const token = jwt.sign({ email: user.email, role: user.role, phone: normalizedPhone }, JWT_SECRET, { expiresIn: "12h" });
-    res.json({
-      token,
-      role: user.role,
-      name: "Customer",
-      phone: normalizedPhone,
-      email: user.email,
-    });
-  } catch (e) {
-    console.error("Customer login error", e);
-    res.status(500).json({ error: "Failed to login customer" });
-  }
-});
-
-app.post("/api/admin/login", adminLoginLimiter, async (req, res) => {
-  try {
-    const schema = z.object({
-      email: z.string().email(),
-      password: z.string().min(6),
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email },
-    });
-    if (!user) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    const ok = bcrypt.compareSync(parsed.data.password, user.passwordHash);
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-    const token = jwt.sign({ email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "12h" });
-    res.json({ token, role: user.role, email: user.email });
-  } catch (e) {
-    console.error("Login error", e);
-    res.status(500).json({ error: "Login failed" });
-  }
-});
+// Legacy auth routes removed (replaced by /api/auth)
 
 app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
   try {
