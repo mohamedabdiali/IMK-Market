@@ -7,6 +7,7 @@ import { CartProvider } from "@/context/CartContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { WishlistProvider } from "@/context/WishlistContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ProtectedRoute as RBACProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
@@ -30,6 +31,13 @@ import AdminProductManagement from "./pages/admin/AdminProductManagement";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminBulkOperations from "./pages/admin/AdminBulkOperations";
 import AdminEmail from "./pages/admin/AdminEmail";
+
+// New RBAC Components
+import EnhancedLogin from "./pages/EnhancedLogin";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import SellerDashboard from "./pages/SellerDashboard";
+import SellerRegistration from "./pages/SellerRegistration";
+import Unauthorized from "./pages/Unauthorized";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +63,18 @@ const App = () => (
                 <Route path="/track-order" element={<TrackOrder />} />
                 <Route path="/market-prices" element={<MarketPrices />} />
 
+                {/* Enhanced Authentication Routes */}
+                <Route path="/login" element={<EnhancedLogin />} />
+                <Route path="/seller/register" element={<SellerRegistration />} />
+                <Route path="/unauthorized" element={<Unauthorized />} />
+
+                {/* Super Admin Routes */}
+                <Route path="/super-admin" element={<RBACProtectedRoute requireSuperAdmin><SuperAdminDashboard /></RBACProtectedRoute>} />
+
+                {/* Seller Routes */}
+                <Route path="/seller" element={<RBACProtectedRoute requireSeller><SellerDashboard /></RBACProtectedRoute>} />
+
+                {/* Legacy Admin Routes */}
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin/orders" element={<ProtectedRoute><AdminOrders /></ProtectedRoute>} />

@@ -26,8 +26,8 @@ app.use(helmet());
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
   : process.env.NODE_ENV === "production"
-  ? []
-  : ["http://localhost:8080", "http://localhost:5173"];
+    ? []
+    : ["http://localhost:8080", "http://localhost:5173"];
 if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
   console.error("CRITICAL: Set ALLOWED_ORIGINS in production to restrict CORS.");
   process.exit(1);
@@ -115,6 +115,23 @@ function formatMoney(amount: number) {
   return `${CURRENCY_SYMBOL} ${amount.toFixed(2)}`;
 }
 const emailService = new EmailService(BRAND_NAME, SUPPORT_EMAIL, SUPPORT_PHONE);
+
+// ============================================
+// IMPORT NEW RBAC ROUTES
+// ============================================
+import authRoutes from "./routes/auth";
+import superAdminRoutes from "./routes/super-admin";
+import sellerRoutes from "./routes/sellers";
+import notificationRoutes from "./routes/notifications";
+
+// ============================================
+// MOUNT NEW ROUTES
+// ============================================
+app.use("/api/auth", authRoutes);
+app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/seller", sellerRoutes);
+app.use("/api/notifications", notificationRoutes);
+
 
 function createOrderId() {
   return `ORD-${nanoid(6).toUpperCase()}`;
@@ -461,7 +478,7 @@ async function createOrderRecord(payload: {
     cargo: payload.cargoType,
     total: formatMoney(total),
   });
-  
+
   await prisma.emailHistory.create({
     data: {
       to: payload.customerEmail,
@@ -535,17 +552,25 @@ async function ensureCategory(name: string) {
   return category;
 }
 
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+import { verifyToken, AuthUser } from "./auth-utils";
+
+function requireAdmin(req: any, res: express.Response, next: express.NextFunction) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   const token = auth.slice(7);
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { role?: string; email?: string };
-    if (payload.role !== "admin") {
+    const user = verifyToken(token);
+    // Allow if super admin or has Admin/Manager/Sales roles
+    const hasAdminAccess = user.isSuperAdmin ||
+      user.roles.some(role => ["Admin", "Manager", "Sales Associate"].includes(role)) ||
+      (user as any).role === "admin"; // Backward compatibility
+
+    if (!hasAdminAccess) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    req.user = user;
     return next();
   } catch {
     return res.status(401).json({ error: "Unauthorized" });
@@ -794,14 +819,14 @@ app.post("/api/payments/initiate", async (req, res) => {
     const instructions =
       paymentMethod === "paystack"
         ? [
-            "You will be redirected to a secure card payment page.",
-            "After payment, admin will confirm and approve your order for processing.",
-          ]
+          "You will be redirected to a secure card payment page.",
+          "After payment, admin will confirm and approve your order for processing.",
+        ]
         : [
-            `Send ${formatMoney(amount)} to ${SUPPORT_PHONE} (${BRAND_NAME}).`,
-            `Use reference: ${reference}.`,
-            "Upload payment confirmation for admin approval.",
-          ];
+          `Send ${formatMoney(amount)} to ${SUPPORT_PHONE} (${BRAND_NAME}).`,
+          `Use reference: ${reference}.`,
+          "Upload payment confirmation for admin approval.",
+        ];
 
     res.json({
       id: payment.id,
@@ -829,9 +854,9 @@ app.get("/api/payments/:id", async (req, res) => {
     if (!payment) return res.status(404).json({ error: "Not found" });
     const orderTracking = payment.orderId
       ? await prisma.order.findUnique({
-          where: { id: payment.orderId },
-          select: { id: true, trackingNumber: true, paymentStatus: true, status: true, paymentMethod: true },
-        })
+        where: { id: payment.orderId },
+        select: { id: true, trackingNumber: true, paymentStatus: true, status: true, paymentMethod: true },
+      })
       : null;
     const storedPayment = parseStoredPaymentItems(payment.items);
     res.json({
@@ -968,14 +993,14 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
             providerReference: session.id,
             ...(shouldWriteItems
               ? {
-                  items: buildStoredPaymentItems({
-                    orderItems: storedPayment.orderItems,
-                    ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
-                    ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
-                    ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
-                    ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
-                  }),
-                }
+                items: buildStoredPaymentItems({
+                  orderItems: storedPayment.orderItems,
+                  ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
+                  ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
+                  ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
+                  ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+                }),
+              }
               : {}),
           },
         });
@@ -986,10 +1011,10 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
             customerEmail: payment.customerEmail,
             customerPhone: payment.customerPhone,
             shippingAddress: payment.shippingAddress,
-            paymentMethod: payment.paymentMethod,
+            paymentMethod: payment.paymentMethod as any,
             paymentStatus: "paid",
             paymentReference: payment.reference,
-            cargoType: payment.cargoType,
+            cargoType: payment.cargoType || undefined,
             items: parseOrderItems(payment.items),
           });
           await prisma.payment.update({ where: { id: payment.id }, data: { orderId: order.id } });
@@ -1060,14 +1085,14 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
         providerReference: providerReference || payment.providerReference,
         ...(newStatus === "paid" && shouldWriteItems
           ? {
-              items: buildStoredPaymentItems({
-                orderItems: storedPayment.orderItems,
-                ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
-                ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
-                ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
-                ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
-              }),
-            }
+            items: buildStoredPaymentItems({
+              orderItems: storedPayment.orderItems,
+              ...(storedPayment.proofImage ? { proofImage: storedPayment.proofImage } : {}),
+              ...(storedPayment.proofVideo ? { proofVideo: storedPayment.proofVideo } : {}),
+              ...(storedPayment.proofSubmittedAt ? { proofSubmittedAt: storedPayment.proofSubmittedAt } : {}),
+              ...(storedPayment.proofImage || storedPayment.proofVideo ? { proofApprovedAt: approvedAt } : {}),
+            }),
+          }
           : {}),
       },
     });
@@ -1080,10 +1105,10 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
           customerEmail: updatedPayment.customerEmail,
           customerPhone: updatedPayment.customerPhone,
           shippingAddress: updatedPayment.shippingAddress,
-          paymentMethod: updatedPayment.paymentMethod,
+          paymentMethod: updatedPayment.paymentMethod as any,
           paymentStatus: "paid",
           paymentReference: updatedPayment.reference,
-          cargoType: updatedPayment.cargoType,
+          cargoType: updatedPayment.cargoType || undefined,
           items: parseOrderItems(updatedPayment.items),
         });
         await prisma.payment.update({ where: { id: paymentId }, data: { orderId: order.id } });
@@ -1196,17 +1221,17 @@ app.get("/api/orders/track", async (req, res) => {
     };
     const order = orderTrackingId
       ? await prisma.order.findFirst({
-          where: {
-            OR: [{ id: orderTrackingId }, { trackingNumber: orderTrackingId }],
-          },
-          include: includePayload,
-        })
+        where: {
+          OR: [{ id: orderTrackingId }, { trackingNumber: orderTrackingId }],
+        },
+        include: includePayload,
+      })
       : orderId
-      ? await prisma.order.findUnique({
+        ? await prisma.order.findUnique({
           where: { id: orderId },
           include: includePayload,
         })
-      : await prisma.order.findFirst({
+        : await prisma.order.findFirst({
           where: { trackingNumber: trackingNumber || undefined },
           include: includePayload,
         });
@@ -1401,7 +1426,7 @@ app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
     const allCategories = await prisma.category.findMany();
     const categoryRevenue = new Map<string, number>();
     const orderItems = await prisma.orderItem.findMany();
-    
+
     for (const item of orderItems) {
       if (!item.productId) continue;
       const product = await prisma.product.findUnique({
@@ -1442,9 +1467,9 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
     const orderIds = orders.map((order) => order.id);
     const payments = orderIds.length
       ? await prisma.payment.findMany({
-          where: { orderId: { in: orderIds } },
-          orderBy: { createdAt: "desc" },
-        })
+        where: { orderId: { in: orderIds } },
+        orderBy: { createdAt: "desc" },
+      })
       : [];
     const paymentByOrderId = new Map<string, (typeof payments)[number]>();
     for (const payment of payments) {
@@ -1644,21 +1669,21 @@ app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
       const template =
         updated.status === "shipped"
           ? emailService.orderShippedTemplate({
-              id: order.id,
-              customerName: order.customerName,
-              productName: item?.productName || "Order Items",
-              quantity: item?.quantity || 1,
-              price: formatMoney(order.total),
-              date: order.createdAt,
-            })
+            id: order.id,
+            customerName: order.customerName,
+            productName: item?.productName || "Order Items",
+            quantity: item?.quantity || 1,
+            price: formatMoney(order.total),
+            date: order.createdAt.toISOString(),
+          })
           : emailService.orderDeliveredTemplate({
-              id: order.id,
-              customerName: order.customerName,
-              productName: item?.productName || "Order Items",
-              quantity: item?.quantity || 1,
-              price: formatMoney(order.total),
-              date: order.createdAt,
-            });
+            id: order.id,
+            customerName: order.customerName,
+            productName: item?.productName || "Order Items",
+            quantity: item?.quantity || 1,
+            price: formatMoney(order.total),
+            date: order.createdAt.toISOString(),
+          });
       await prisma.emailHistory.create({
         data: emailService.createHistoryEntry(
           order.customerEmail,
@@ -1825,7 +1850,7 @@ app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, re
     if (!pending) {
       return res.status(404).json({ error: "Not found" });
     }
-    
+
     const category = await ensureCategory(pending.category);
     await prisma.product.create({
       data: {
@@ -1879,12 +1904,12 @@ app.post("/api/admin/pending-products/:id/reject", requireAdmin, async (req, res
     if (!pending) {
       return res.status(404).json({ error: "Not found" });
     }
-    
+
     await prisma.pendingProduct.update({
       where: { id: pending.id },
       data: { status: "rejected" },
     });
-    
+
     res.json({ id: pending.id, status: "rejected" });
   } catch (e) {
     console.error("Reject product error", e);

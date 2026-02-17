@@ -3,6 +3,10 @@ import crypto from "crypto";
 import { nanoid } from "nanoid";
 import prisma from "./prisma";
 
+// ============================================
+// SEED DATA DEFINITIONS
+// ============================================
+
 const categories = [
   { name: "Fashion & Clothing", image: "https://images.unsplash.com/photo-1445205170230-053b83016050?w=400&h=300&fit=crop" },
   { name: "Electronics", image: "https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&h=300&fit=crop" },
@@ -118,10 +122,391 @@ const products = [
   },
 ];
 
-async function main() {
-  console.log("🌱 Seeding database...");
+// ============================================
+// PERMISSION DEFINITIONS
+// ============================================
 
-  // Create categories
+const resources = [
+  "dashboard",
+  "analytics",
+  "products",
+  "orders",
+  "users",
+  "sellers",
+  "marketing",
+  "reports",
+  "settings",
+  "notifications",
+  "audit_logs",
+  "tenants",
+  "roles",
+];
+
+const actions = ["view", "create", "edit", "delete", "approve", "export"];
+
+// ============================================
+// MAIN SEED FUNCTION
+// ============================================
+
+async function main() {
+  console.log("🌱 Seeding database with multi-tenant architecture...\n");
+
+  // ============================================
+  // 1. CREATE PERMISSIONS
+  // ============================================
+  console.log("📋 Creating permissions...");
+  const permissions = [];
+  for (const resource of resources) {
+    for (const action of actions) {
+      const permission = await prisma.permission.upsert({
+        where: {
+          resource_action: { resource, action },
+        },
+        update: {},
+        create: {
+          resource,
+          action,
+          description: `${action.charAt(0).toUpperCase() + action.slice(1)} ${resource}`,
+        },
+      });
+      permissions.push(permission);
+    }
+  }
+  console.log(`✅ Created ${permissions.length} permissions\n`);
+
+  // ============================================
+  // 2. CREATE SUPER ADMIN USER
+  // ============================================
+  console.log("👑 Creating Super System Admin...");
+  const superAdminPassword = crypto.randomBytes(16).toString("base64").slice(0, 20);
+  const superAdminHash = bcrypt.hashSync(superAdminPassword, 10);
+
+  const superAdmin = await prisma.user.upsert({
+    where: { email: "admin@primmesisc.com" },
+    update: {},
+    create: {
+      email: "admin@primmesisc.com",
+      passwordHash: superAdminHash,
+      name: "Super System Admin",
+      isSuperAdmin: true,
+    },
+  });
+  console.log(`✅ Super Admin created: admin@primmesisc.com`);
+  console.log(`🔐 SUPER ADMIN PASSWORD: ${superAdminPassword}`);
+  console.log(`⚠️  SAVE THIS PASSWORD - It will not be shown again!\n`);
+
+  // ============================================
+  // 3. CREATE GLOBAL ROLES
+  // ============================================
+  console.log("🎭 Creating global roles...");
+  
+  const superAdminRole = await prisma.role.upsert({
+    where: { name_tenantId: { name: "Super Admin", tenantId: null } },
+    update: {},
+    create: {
+      name: "Super Admin",
+      description: "Full system access across all tenants",
+      isSystemRole: true,
+    },
+  });
+
+  const sellerRole = await prisma.role.upsert({
+    where: { name_tenantId: { name: "Seller", tenantId: null } },
+    update: {},
+    create: {
+      name: "Seller",
+      description: "Seller with product management capabilities",
+      isSystemRole: true,
+    },
+  });
+
+  const customerRole = await prisma.role.upsert({
+    where: { name_tenantId: { name: "Customer", tenantId: null } },
+    update: {},
+    create: {
+      name: "Customer",
+      description: "Regular customer account",
+      isSystemRole: true,
+    },
+  });
+
+  // Assign all permissions to Super Admin role
+  for (const permission of permissions) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: superAdminRole.id,
+          permissionId: permission.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: superAdminRole.id,
+        permissionId: permission.id,
+      },
+    });
+  }
+
+  // Assign Super Admin role to super admin user
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: superAdmin.id,
+        roleId: superAdminRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: superAdmin.id,
+      roleId: superAdminRole.id,
+    },
+  });
+
+  console.log(`✅ Created global roles: Super Admin, Seller, Customer\n`);
+
+  // ============================================
+  // 4. CREATE IMK-MARKET TENANT
+  // ============================================
+  console.log("🏢 Creating IMK-Market tenant...");
+  const imkTenant = await prisma.tenant.upsert({
+    where: { name: "IMK-Market" },
+    update: {},
+    create: {
+      name: "IMK-Market",
+      subscriptionType: "E-commerce Business",
+      subscriptionStatus: "active",
+      modulesEnabled: JSON.stringify([
+        "products",
+        "orders",
+        "customers",
+        "sellers",
+        "analytics",
+        "marketing",
+      ]),
+    },
+  });
+  console.log(`✅ Created tenant: IMK-Market\n`);
+
+  // ============================================
+  // 5. CREATE TENANT-SPECIFIC ROLES
+  // ============================================
+  console.log("🎯 Creating IMK-Market roles...");
+  
+  const managerRole = await prisma.role.upsert({
+    where: { name_tenantId: { name: "Manager", tenantId: imkTenant.id } },
+    update: {},
+    create: {
+      name: "Manager",
+      description: "Full access within IMK-Market tenant",
+      tenantId: imkTenant.id,
+      isSystemRole: false,
+    },
+  });
+
+  const salesAssociateRole = await prisma.role.upsert({
+    where: { name_tenantId: { name: "Sales Associate", tenantId: imkTenant.id } },
+    update: {},
+    create: {
+      name: "Sales Associate",
+      description: "Limited access for sales operations",
+      tenantId: imkTenant.id,
+      isSystemRole: false,
+    },
+  });
+
+  // Manager permissions (most permissions except system-level)
+  const managerPermissions = permissions.filter(
+    (p) => !["tenants", "roles", "audit_logs"].includes(p.resource) || p.action === "view"
+  );
+  for (const permission of managerPermissions) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: managerRole.id,
+          permissionId: permission.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: managerRole.id,
+        permissionId: permission.id,
+      },
+    });
+  }
+
+  // Sales Associate permissions (limited)
+  const salesPermissions = permissions.filter(
+    (p) =>
+      (p.resource === "orders" && ["view", "edit"].includes(p.action)) ||
+      (p.resource === "products" && ["view", "edit"].includes(p.action)) ||
+      (p.resource === "dashboard" && p.action === "view")
+  );
+  for (const permission of salesPermissions) {
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: salesAssociateRole.id,
+          permissionId: permission.id,
+        },
+      },
+      update: {},
+      create: {
+        roleId: salesAssociateRole.id,
+        permissionId: permission.id,
+      },
+    });
+  }
+
+  console.log(`✅ Created tenant roles: Manager, Sales Associate\n`);
+
+  // ============================================
+  // 6. CREATE IMK-MARKET TEAM ACCOUNTS
+  // ============================================
+  console.log("👥 Creating IMK-Market team accounts...");
+  
+  const managerPassword = "Manager@123";
+  const salesPassword = "Sales@123";
+
+  const manager = await prisma.user.upsert({
+    where: { email: "manager@imk-market.com" },
+    update: {},
+    create: {
+      email: "manager@imk-market.com",
+      passwordHash: bcrypt.hashSync(managerPassword, 10),
+      name: "IMK Manager",
+      tenantId: imkTenant.id,
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: manager.id,
+        roleId: managerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: manager.id,
+      roleId: managerRole.id,
+      tenantId: imkTenant.id,
+    },
+  });
+
+  const salesAssociate = await prisma.user.upsert({
+    where: { email: "sales@imk-market.com" },
+    update: {},
+    create: {
+      email: "sales@imk-market.com",
+      passwordHash: bcrypt.hashSync(salesPassword, 10),
+      name: "Sales Associate",
+      tenantId: imkTenant.id,
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: salesAssociate.id,
+        roleId: salesAssociateRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: salesAssociate.id,
+      roleId: salesAssociateRole.id,
+      tenantId: imkTenant.id,
+    },
+  });
+
+  console.log(`✅ Manager: manager@imk-market.com / ${managerPassword}`);
+  console.log(`✅ Sales Associate: sales@imk-market.com / ${salesPassword}\n`);
+
+  // ============================================
+  // 7. CREATE DEMO CUSTOMER
+  // ============================================
+  console.log("🛍️  Creating demo customer...");
+  const customerPassword = "Customer@123";
+  const demoCustomer = await prisma.user.upsert({
+    where: { email: "customer@demo.com" },
+    update: {},
+    create: {
+      email: "customer@demo.com",
+      passwordHash: bcrypt.hashSync(customerPassword, 10),
+      name: "Demo Customer",
+      phone: "+971501234567",
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: demoCustomer.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: demoCustomer.id,
+      roleId: customerRole.id,
+    },
+  });
+
+  console.log(`✅ Demo Customer: customer@demo.com / ${customerPassword}\n`);
+
+  // ============================================
+  // 8. CREATE DEMO SELLER
+  // ============================================
+  console.log("🏪 Creating demo seller...");
+  const sellerPassword = "Seller@123";
+  const demoSeller = await prisma.user.upsert({
+    where: { email: "seller@demo.com" },
+    update: {},
+    create: {
+      email: "seller@demo.com",
+      passwordHash: bcrypt.hashSync(sellerPassword, 10),
+      name: "Demo Seller",
+      phone: "+971509876543",
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: demoSeller.id,
+        roleId: sellerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: demoSeller.id,
+      roleId: sellerRole.id,
+    },
+  });
+
+  const sellerProfile = await prisma.sellerProfile.upsert({
+    where: { userId: demoSeller.id },
+    update: {},
+    create: {
+      userId: demoSeller.id,
+      businessName: "Demo Electronics Store",
+      ownerName: "John Doe",
+      phone: "+971509876543",
+      businessAddress: "Dubai, UAE",
+      productCategory: "Electronics",
+      description: "Premium electronics and gadgets",
+      status: "active",
+      approvedAt: new Date(),
+      approvedBy: superAdmin.id,
+    },
+  });
+
+  console.log(`✅ Demo Seller: seller@demo.com / ${sellerPassword}\n`);
+
+  // ============================================
+  // 9. CREATE CATEGORIES
+  // ============================================
+  console.log("📦 Creating categories...");
   for (const cat of categories) {
     await prisma.category.upsert({
       where: { name: cat.name },
@@ -132,20 +517,22 @@ async function main() {
       },
     });
   }
+  console.log(`✅ Created ${categories.length} categories\n`);
 
-  // Get categories for product seeding
+  // ============================================
+  // 10. CREATE PRODUCTS
+  // ============================================
+  console.log("🛒 Creating products...");
   const categoryMap = new Map<string, string>();
   const allCategories = await prisma.category.findMany();
   allCategories.forEach((cat) => categoryMap.set(cat.name, cat.id));
 
-  // Create products
   for (const prod of products) {
     const categoryId = categoryMap.get(prod.category);
     if (!categoryId) continue;
-    await prisma.product.upsert({
-      where: { sku: `IMK-${Math.floor(Math.random() * 9000 + 1000)}` },
-      update: {},
-      create: {
+
+    await prisma.product.create({
+      data: {
         name: prod.name,
         description: prod.description,
         price: prod.price,
@@ -164,35 +551,85 @@ async function main() {
         lastRestocked: new Date(),
         sellerName: "IMK-MARKET",
         sellerEmail: "info@imkmarket.com",
+        tenantId: imkTenant.id,
         country: "UAE",
         status: "active",
       },
     });
   }
 
-  // Create or update admin user
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@imkmarket.com";
-  const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString("base64");
-  const hash = bcrypt.hashSync(adminPassword, 10);
-
-  await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: {
-      email: adminEmail,
-      passwordHash: hash,
-      role: "admin",
-    },
-  });
-
-  console.log("✅ Database seeded successfully!");
-  if (!process.env.ADMIN_PASSWORD) {
-    console.log(`🔐 Generated ADMIN_PASSWORD: ${adminPassword}`);
-    console.log("⚠️  Please set ADMIN_PASSWORD in your production environment and rotate this password.");
+  // Create one seller product
+  const electronicsCategory = categoryMap.get("Electronics");
+  if (electronicsCategory) {
+    await prisma.product.create({
+      data: {
+        name: "Premium Bluetooth Speaker",
+        description: "High-quality portable Bluetooth speaker with 360° sound",
+        price: 129.99,
+        originalPrice: 159.99,
+        image: "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500&h=500&fit=crop",
+        images: ["https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500&h=500&fit=crop"],
+        categoryId: electronicsCategory,
+        rating: 4.7,
+        reviewCount: 89,
+        inStock: true,
+        freeShipping: true,
+        badge: "Seller Product",
+        sku: `SELLER-${Math.floor(Math.random() * 9000 + 1000)}`,
+        stock: 25,
+        lowStockThreshold: 5,
+        lastRestocked: new Date(),
+        sellerId: sellerProfile.id,
+        country: "UAE",
+        status: "active",
+      },
+    });
   }
+
+  console.log(`✅ Created ${products.length + 1} products\n`);
+
+  // ============================================
+  // SUMMARY
+  // ============================================
+  console.log("=" .repeat(60));
+  console.log("✅ DATABASE SEEDING COMPLETED SUCCESSFULLY!");
+  console.log("=" .repeat(60));
+  console.log("\n📋 ACCOUNT CREDENTIALS:\n");
+  console.log("🔴 SUPER ADMIN (Platform Owner):");
+  console.log(`   Email: admin@primmesisc.com`);
+  console.log(`   Password: ${superAdminPassword}`);
+  console.log(`   Access: Full platform control\n`);
+  
+  console.log("🔵 IMK-MARKET MANAGER:");
+  console.log(`   Email: manager@imk-market.com`);
+  console.log(`   Password: ${managerPassword}`);
+  console.log(`   Access: Full IMK-Market tenant access\n`);
+  
+  console.log("🟢 SALES ASSOCIATE:");
+  console.log(`   Email: sales@imk-market.com`);
+  console.log(`   Password: ${salesPassword}`);
+  console.log(`   Access: Orders & Products (limited)\n`);
+  
+  console.log("🟡 DEMO SELLER:");
+  console.log(`   Email: seller@demo.com`);
+  console.log(`   Password: ${sellerPassword}`);
+  console.log(`   Access: Own products management\n`);
+  
+  console.log("🟣 DEMO CUSTOMER:");
+  console.log(`   Email: customer@demo.com`);
+  console.log(`   Password: ${customerPassword}`);
+  console.log(`   Access: Shopping & orders\n`);
+  
+  console.log("=" .repeat(60));
+  console.log("⚠️  IMPORTANT: Save the Super Admin password securely!");
+  console.log("=" .repeat(60));
 }
 
-main().catch((e) => {
-  console.error("❌ Seed failed:", e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error("❌ Seed failed:", e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -19,15 +19,13 @@ const baseNavItems = [
 
 export function Header() {
   const { totalItems: cartItemsCount, setIsCartOpen } = useCart();
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isSuperAdmin, isSeller, isAuthenticated, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isCustomerAuthenticated = Boolean(
-    user && !isAdmin && user.role === "user" && user.source !== "tracking"
-  );
+  const isCustomerAuthenticated = isAuthenticated && !isAdmin && !isSuperAdmin && !isSeller && user?.source === "customer";
 
   const navItems = isCustomerAuthenticated
     ? [...baseNavItems.slice(0, 6), { label: "Wishlist", href: "/wishlist" }, ...baseNavItems.slice(6)]
@@ -81,28 +79,41 @@ export function Header() {
             <span className="hidden sm:inline">info@imkmarket.com</span>
           </div>
           <div className="flex items-center gap-4">
-            {isAdmin ? (
-              <>
-                <Link to="/admin" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
-                  Admin Dashboard
-                </Link>
-                <button
-                  className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors"
-                  onClick={logout}
-                >
-                  Logout
-                </button>
-              </>
-            ) : null}
+            {isSuperAdmin && (
+              <Link to="/super-admin" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
+                Super Admin
+              </Link>
+            )}
+            {isAdmin && !isSuperAdmin && (
+              <Link to="/admin" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
+                Admin Dashboard
+              </Link>
+            )}
+            {isSeller && (
+              <Link to="/seller" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
+                Seller Dashboard
+              </Link>
+            )}
+            {isAuthenticated && (
+              <button
+                className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors underline decoration-dotted"
+                onClick={logout}
+              >
+                Logout
+              </button>
+            )}
             <button className="flex items-center gap-1 hover:text-accent transition-colors">
               <Globe className="h-3 w-3" />
               English
             </button>
-            {!isAdmin && (
+            {!isAuthenticated && (
+              <Link to="/login" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
+                Login / Sign Up
+              </Link>
+            )}
+            {isCustomerAuthenticated && (
               <Link to="/account" className="hidden sm:inline text-primary-foreground/80 hover:text-accent transition-colors">
-                {isCustomerAuthenticated
-                  ? user?.name || user?.phone || user?.email || "My Account"
-                  : "Login / Sign Up"}
+                {user?.name || user?.phone || "My Account"}
               </Link>
             )}
           </div>
@@ -194,11 +205,10 @@ export function Header() {
               <li key={item.href}>
                 <Link
                   to={item.href}
-                  className={`block px-4 py-3 text-sm font-medium transition-colors ${
-                    location.pathname === item.href
-                      ? "bg-accent text-accent-foreground"
-                      : "text-primary-foreground hover:bg-primary/80"
-                  }`}
+                  className={`block px-4 py-3 text-sm font-medium transition-colors ${location.pathname === item.href
+                    ? "bg-accent text-accent-foreground"
+                    : "text-primary-foreground hover:bg-primary/80"
+                    }`}
                 >
                   {item.label}
                 </Link>
@@ -238,11 +248,10 @@ export function Header() {
                 <Link
                   to={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-4 py-3 text-sm font-medium transition-colors ${
-                    location.pathname === item.href
-                      ? "bg-accent/10 text-accent"
-                      : "hover:bg-secondary"
-                  }`}
+                  className={`block px-4 py-3 text-sm font-medium transition-colors ${location.pathname === item.href
+                    ? "bg-accent/10 text-accent"
+                    : "hover:bg-secondary"
+                    }`}
                 >
                   {item.label}
                 </Link>

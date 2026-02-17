@@ -31,7 +31,7 @@ export function ProductCard({ product }: ProductCardProps) {
     : null;
 
   return (
-    <div className="group bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 animate-fade-in border border-border/70 h-full flex flex-col min-h-[170px]">
+    <div className="group bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 animate-fade-in border border-border/70 h-full flex flex-col">
       <div className="relative aspect-[4/3] bg-secondary/20 p-1.5">
         <Link
           to={`/product/${product.id}`}
@@ -40,7 +40,7 @@ export function ProductCard({ product }: ProductCardProps) {
           <ProductImageSlideshow
             images={images}
             alt={product.name}
-            className="h-full w-full"
+            className="h-full w-full overflow-hidden"
             imageClassName="h-full w-full object-cover"
           />
         </Link>

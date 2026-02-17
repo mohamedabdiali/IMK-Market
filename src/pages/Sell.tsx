@@ -296,7 +296,7 @@ export default function Sell() {
         </section>
 
         <section className="py-12">
-          <div className="container max-w-3xl">
+          <div className="container max-w-5xl">
             <form onSubmit={handleSubmit} className="bg-card rounded-xl shadow-sm p-6 md:p-8 space-y-6 border border-border">
               <h2 className="text-xl font-bold border-b pb-4">Product Information</h2>
               

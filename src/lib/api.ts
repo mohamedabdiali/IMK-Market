@@ -171,4 +171,29 @@ export const api = {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     }),
+
+  // ============================================
+  // GENERIC API METHODS
+  // ============================================
+  get: (path: string, token?: string) =>
+    apiFetch(path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  post: (path: string, payload?: unknown, token?: string) =>
+    apiFetch(path, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+  patch: (path: string, payload?: unknown, token?: string) =>
+    apiFetch(path, {
+      method: "PATCH",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+  delete: (path: string, token?: string) =>
+    apiFetch(path, {
+      method: "DELETE",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 };

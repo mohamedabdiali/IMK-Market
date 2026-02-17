@@ -10,16 +10,193 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// MULTI-TENANT & RBAC MODELS
+// ============================================
+
+model Tenant {
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  subscriptionType   String   // "E-commerce Business" | "Enterprise" | "Starter"
+  subscriptionStatus String   @default("active") // "active" | "suspended" | "cancelled"
+  modulesEnabled     Json     @default("[]") // Array of enabled module names
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users         User[]
+  roles         Role[]
+  products      Product[]
+  orders        Order[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  userRoles     UserRole[]
+
+  @@index([name])
+  @@index([subscriptionStatus])
+}
+
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
+  id            String    @id @default(cuid())
+  email         String    @unique
   passwordHash  String
-  role          String   @default("user") // "admin" | "user"
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  name          String?
+  phone         String?
+  tenantId      String?
+  tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  isSuperAdmin  Boolean   @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  userRoles     UserRole[]
+  sellerProfile SellerProfile?
+  notifications Notification[]
+  auditLogs     AuditLog[]
 
   @@index([email])
+  @@index([tenantId])
+  @@index([isSuperAdmin])
 }
+
+model Role {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  isSystemRole Boolean  @default(false) // System roles cannot be deleted
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+  @@index([isSystemRole])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  resource    String   // "dashboard" | "analytics" | "products" | "orders" | "users" | "sellers" | "marketing" | "reports" | "settings" | "notifications" | "audit_logs"
+  action      String   // "view" | "create" | "edit" | "delete" | "approve" | "export"
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+}
+
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([tenantId])
+}
+
+// ============================================
+// SELLER MANAGEMENT
+// ============================================
+
+model SellerProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName    String
+  ownerName       String
+  phone           String
+  tradeLicense    String?
+  emiratesId      String?
+  businessAddress String
+  bankDetails     Json?     // { accountName, accountNumber, bankName, iban, swiftCode }
+  productCategory String
+  description     String
+  status          String    @default("pending") // "pending" | "active" | "rejected" | "suspended"
+  rejectionReason String?
+  approvedAt      DateTime?
+  approvedBy      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  products Product[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([businessName])
+}
+
+// ============================================
+// NOTIFICATION SYSTEM
+// ============================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type      String   // "seller_registration" | "seller_approved" | "seller_rejected" | "new_order" | "order_status" | "low_stock" | "payment_received"
+  title     String
+  message   String
+  data      Json?    // Additional context data
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+// ============================================
+// AUDIT LOGGING
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId   String?
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  action     String   // "create" | "update" | "delete" | "approve" | "reject"
+  resource   String   // "user" | "role" | "product" | "order" | "seller" | "tenant"
+  resourceId String?
+  changes    Json?    // Before/after snapshot
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+// ============================================
+// EXISTING MODELS (ENHANCED)
+// ============================================
 
 model Category {
   id        String   @id @default(cuid())
@@ -34,36 +211,42 @@ model Category {
 }
 
 model Product {
-  id                  String   @id @default(cuid())
-  name                String
-  description         String
-  price               Float
-  originalPrice       Float?
-  image               String
-  images              String[] @default([])
-  categoryId          String
-  category            Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  rating              Float    @default(4.5)
-  reviewCount         Int      @default(0)
-  inStock             Boolean  @default(true)
-  freeShipping        Boolean  @default(false)
-  badge               String?
-  sku                 String   @unique
-  stock               Int      @default(0)
-  lowStockThreshold   Int      @default(10)
-  lastRestocked       DateTime @default(now())
-  sellerName          String?
-  sellerEmail         String?
-  country             String   @default("UAE")
-  status              String   @default("active") // "active" | "inactive"
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                String         @id @default(cuid())
+  name              String
+  description       String
+  price             Float
+  originalPrice     Float?
+  image             String
+  images            String[]       @default([])
+  categoryId        String
+  category          Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  rating            Float          @default(4.5)
+  reviewCount       Int            @default(0)
+  inStock           Boolean        @default(true)
+  freeShipping      Boolean        @default(false)
+  badge             String?
+  sku               String         @unique
+  stock             Int            @default(0)
+  lowStockThreshold Int            @default(10)
+  lastRestocked     DateTime       @default(now())
+  sellerName        String?        // Deprecated - use sellerProfile instead
+  sellerEmail       String?        // Deprecated - use sellerProfile instead
+  sellerId          String?        // Foreign key to SellerProfile
+  sellerProfile     SellerProfile? @relation(fields: [sellerId], references: [id], onDelete: SetNull)
+  tenantId          String?
+  tenant            Tenant?        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  country           String         @default("UAE")
+  status            String         @default("active") // "active" | "inactive"
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   orderItems OrderItem[]
 
   @@index([categoryId])
   @@index([status])
   @@index([name])
+  @@index([sellerId])
+  @@index([tenantId])
 }
 
 model PendingProduct {
@@ -83,27 +266,30 @@ model PendingProduct {
 }
 
 model Order {
-  id               String   @id @default(cuid())
-  customerName     String
-  customerEmail    String
-  customerPhone    String
-  shippingAddress  String
-  status           String   @default("pending") // "pending" | "processing" | "shipped" | "delivered" | "cancelled"
-  total            Float
-  paymentMethod    String   // "cod" | "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
-  paymentStatus    String   @default("pending") // "pending" | "initialized" | "paid" | "failed"
-  paymentReference String?
-  cargoType        String?
-  trackingNumber   String?  @unique
-  trackingCarrier  String?
-  trackingUrl      String?
-  currentLocation  String?
-  estimatedDelivery DateTime?
-  shippedAt        DateTime?
-  deliveredAt      DateTime?
+  id                 String   @id @default(cuid())
+  customerName       String
+  customerEmail      String
+  customerPhone      String
+  shippingAddress    String
+  status             String   @default("pending") // "pending" | "processing" | "shipped" | "delivered" | "cancelled"
+  total              Float
+  paymentMethod      String   // "cod" | "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
+  paymentStatus      String   @default("pending") // "pending" | "initialized" | "paid" | "failed"
+  paymentReference   String?
+  cargoType          String?
+  trackingNumber     String?  @unique
+  trackingCarrier    String?
+  trackingUrl        String?
+  currentLocation    String?
+  estimatedDelivery  DateTime?
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
   lastTrackingUpdate DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  tenantId           String?
+  tenant             Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  sellerId           String?  // If order contains seller products
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   items          OrderItem[]
   trackingEvents OrderTrackingEvent[]
@@ -111,6 +297,8 @@ model Order {
   @@index([customerEmail])
   @@index([status])
   @@index([createdAt])
+  @@index([tenantId])
+  @@index([sellerId])
 }
 
 model OrderItem {
@@ -145,24 +333,24 @@ model OrderTrackingEvent {
 }
 
 model Payment {
-  id                  String   @id @default(cuid())
-  provider            String   // "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
-  status              String   @default("pending") // "pending" | "paid" | "failed" | "cancelled"
-  amount              Float
-  currency            String   @default("USD") // "SLE" | "SLL" | "USD"
-  reference           String   @unique
-  providerReference   String?
-  items               Json?
-  paymentMethod       String   // "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
-  paymentReference    String?
-  customerName        String
-  customerEmail       String
-  customerPhone       String
-  shippingAddress     String
-  cargoType           String?
-  orderId             String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default(cuid())
+  provider          String   // "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
+  status            String   @default("pending") // "pending" | "paid" | "failed" | "cancelled"
+  amount            Float
+  currency          String   @default("USD") // "SLE" | "SLL" | "USD"
+  reference         String   @unique
+  providerReference String?
+  items             Json?
+  paymentMethod     String   // "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe"
+  paymentReference  String?
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  shippingAddress   String
+  cargoType         String?
+  orderId           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([reference])
   @@index([status])

@@ -1,0 +1,30 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "allowJs": true,
+        "checkJs": false,
+        "strict": false,
+        "noImplicitAny": false,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ]
+        },
+        "types": [
+            "node"
+        ]
+    },
+    "include": [
+        "server/**/*.ts",
+        "prisma/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}
