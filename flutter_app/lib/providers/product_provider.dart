@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_app/models/product_model.dart';
 import 'package:flutter_app/services/firestore_service.dart';
@@ -9,6 +11,7 @@ class ProductProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   String? _selectedCategoryId;
+  StreamSubscription<List<Product>>? _subscription;
 
   List<Product> get products => _products;
   bool get isLoading => _isLoading;
@@ -23,7 +26,8 @@ class ProductProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    _firestoreService
+    _subscription?.cancel();
+    _subscription = _firestoreService
         .getProducts(categoryId: _selectedCategoryId)
         .listen(
           (products) {
@@ -50,12 +54,14 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _firestoreService.getProducts(searchQuery: query).listen((products) {
-        _products = products;
-        _isLoading = false;
-        _error = null;
-        notifyListeners();
-      });
+      _subscription?.cancel();
+      _subscription =
+          _firestoreService.getProducts(searchQuery: query).listen((products) {
+            _products = products;
+            _isLoading = false;
+            _error = null;
+            notifyListeners();
+          });
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
@@ -93,5 +99,11 @@ class ProductProvider extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 }

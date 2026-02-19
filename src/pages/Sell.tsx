@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/cart/CartDrawer";
@@ -8,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Image as ImageIcon, Package, Video, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import { categories } from "@/data/products";
 import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 
 const IMAGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
 const VIDEO_MAX_FILE_SIZE = 8 * 1024 * 1024;
@@ -21,9 +23,7 @@ const createInitialForm = () => ({
   price: "",
   description: "",
   location: "",
-  name: "",
-  email: "",
-  phone: "",
+  stock: "",
 });
 
 const getSellErrorMessage = (error: unknown) => {
@@ -42,6 +42,17 @@ const getSellErrorMessage = (error: unknown) => {
 };
 
 export default function Sell() {
+  const location = useLocation();
+  const { user, token, isAuthenticated, isSeller } = useAuth();
+  const sellerStatus = user?.sellerProfile?.status || null;
+  const isActiveSeller = Boolean(isSeller && sellerStatus === "active");
+  const usingMockApi = import.meta.env.VITE_USE_MOCK_API === "true";
+  const { data: categoryData = [], isLoading: categoriesLoading } = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => api.getCategories(),
+  });
+  const categories = categoryData as { id: string; name: string; image?: string }[];
+
   const [formData, setFormData] = useState(createInitialForm);
   const [productImage, setProductImage] = useState("");
   const [productImageName, setProductImageName] = useState("");
@@ -206,6 +217,14 @@ export default function Sell() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!isActiveSeller) {
+      toast({
+        title: "Seller approval required",
+        description: "Your seller account must be approved before listing products.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!formData.category) {
       toast({
         title: "Category required",
@@ -245,26 +264,48 @@ export default function Sell() {
 
     const selectedCategory = categories.find((cat) => cat.id === formData.category);
     const categoryName = selectedCategory?.name || formData.category;
+    const stock = Number.parseInt(formData.stock || "0", 10);
 
     setIsSubmitting(true);
     try {
-      await api.submitSellerProduct({
-        name: formData.productName.trim(),
-        category: categoryName,
-        price,
-        description: formData.description.trim(),
-        location: formData.location.trim(),
-        sellerName: formData.name.trim(),
-        sellerEmail: formData.email.trim(),
-        phone: formData.phone.trim(),
-        image: productImage,
-        video: productVideo || undefined,
-      });
+      if (usingMockApi) {
+        await api.submitSellerProduct({
+          name: formData.productName.trim(),
+          category: categoryName,
+          price,
+          description: formData.description.trim(),
+          location: formData.location.trim(),
+          sellerName: user?.name || "Seller",
+          sellerEmail: user?.email || "seller@imkmarket.com",
+          phone: user?.phone || "",
+          image: productImage,
+          video: productVideo || undefined,
+        });
 
-      toast({
-        title: "Product Submitted!",
-        description: "Your product has been submitted for review. We'll notify you once approved.",
-      });
+        toast({
+          title: "Product Submitted!",
+          description: "Your product has been submitted for review. We'll notify you once approved.",
+        });
+      } else {
+        if (!token) {
+          throw new Error("Seller session expired. Please login again.");
+        }
+        await api.createSellerProduct(token, {
+          name: formData.productName.trim(),
+          description: formData.description.trim(),
+          price,
+          categoryId: formData.category,
+          images: [productImage],
+          stock: Number.isFinite(stock) ? Math.max(0, stock) : 0,
+          lowStockThreshold: 5,
+          freeShipping: false,
+        });
+
+        toast({
+          title: "Product Added!",
+          description: "Your product is now live in your seller catalog.",
+        });
+      }
       setFormData(createInitialForm());
       resetUploads();
     } catch (error) {
@@ -297,202 +338,239 @@ export default function Sell() {
 
         <section className="py-12">
           <div className="container max-w-5xl">
-            <form onSubmit={handleSubmit} className="bg-card rounded-xl shadow-sm p-6 md:p-8 space-y-6 border border-border">
-              <h2 className="text-xl font-bold border-b pb-4">Product Information</h2>
-              
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Product Name *</label>
-                  <Input
-                    required
-                    value={formData.productName}
-                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                    placeholder="Enter product name"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Category *</label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {!isAuthenticated && (
+              <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
+                <h2 className="text-2xl font-bold">Seller Account Required</h2>
+                <p className="text-muted-foreground">
+                  Please sign in as a seller or register to submit products.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Link to="/login?tab=seller" state={{ from: location }}>
+                    <Button variant="gold">Login as Seller</Button>
+                  </Link>
+                  <Link to="/seller/register">
+                    <Button variant="outline">Register as Seller</Button>
+                  </Link>
                 </div>
               </div>
+            )}
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Price (Le) *</label>
-                  <Input
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Location *</label>
-                  <Input
-                    required
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="City, Country"
-                  />
+            {isAuthenticated && !isSeller && (
+              <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
+                <h2 className="text-2xl font-bold">Seller Approval Needed</h2>
+                <p className="text-muted-foreground">
+                  Your account is not a seller yet. Register as a seller to submit products.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Link to="/seller/register">
+                    <Button variant="gold">Register as Seller</Button>
+                  </Link>
                 </div>
               </div>
+            )}
 
-              <div>
-                <label className="text-sm font-medium mb-2 block">Product Description *</label>
-                <Textarea
-                  required
-                  rows={4}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe your product in detail..."
-                />
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Product Image *</label>
-                  <Input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageSelect}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    className="w-full border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-accent/50 transition-colors"
-                  >
-                    {productImage ? (
-                      <img
-                        src={productImage}
-                        alt="Selected product"
-                        className="mx-auto h-36 w-full rounded-md object-cover"
-                      />
-                    ) : (
-                      <div className="py-5">
-                        <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-sm text-muted-foreground">Click to upload image</p>
-                        <p className="text-xs text-muted-foreground/80 mt-1">Max 5MB</p>
-                      </div>
-                    )}
-                  </button>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground truncate">
-                      {productImageName || "No image selected"}
-                    </p>
-                    {productImage && (
-                      <Button type="button" variant="ghost" size="sm" onClick={clearImage} className="h-7 px-2 text-xs">
-                        <X className="h-3 w-3 mr-1" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Product Video (Optional)</label>
-                  <Input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={handleVideoSelect}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => videoInputRef.current?.click()}
-                    className="w-full border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-accent/50 transition-colors"
-                  >
-                    {productVideoPreviewUrl ? (
-                      <video
-                        src={productVideoPreviewUrl}
-                        controls
-                        className="mx-auto h-36 w-full rounded-md object-cover"
-                      />
-                    ) : (
-                      <div className="py-5">
-                        <Video className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-sm text-muted-foreground">Click to upload video</p>
-                        <p className="text-xs text-muted-foreground/80 mt-1">MP4/MOV/WebM, max 8MB</p>
-                      </div>
-                    )}
-                  </button>
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground truncate">
-                      {productVideoName || "No video selected"}
-                    </p>
-                    {productVideo && (
-                      <Button type="button" variant="ghost" size="sm" onClick={clearVideo} className="h-7 px-2 text-xs">
-                        <X className="h-3 w-3 mr-1" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
+            {isAuthenticated && isSeller && sellerStatus !== "active" && (
+              <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
+                <h2 className="text-2xl font-bold">Seller Status: {sellerStatus || "pending"}</h2>
+                <p className="text-muted-foreground">
+                  Your seller account is not active yet. Once approved, you can list products here.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Link to="/seller">
+                    <Button variant="outline">View Seller Dashboard</Button>
+                  </Link>
                 </div>
               </div>
+            )}
 
-              <h2 className="text-xl font-bold border-b pb-4 pt-4">Seller Information</h2>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Your Name *</label>
-                  <Input
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Full name"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Email Address *</label>
-                  <Input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="email@example.com"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium mb-2 block">Phone Number *</label>
-                <Input
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+1 234 567 8900"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                variant="gold"
-                size="lg"
-                className="w-full"
-                disabled={isSubmitting || isImageProcessing || isVideoProcessing}
+            {isActiveSeller && (
+              <form
+                onSubmit={handleSubmit}
+                className="bg-card rounded-xl shadow-sm p-6 md:p-8 space-y-6 border border-border"
               >
-                {isSubmitting ? "Submitting Product..." : isImageProcessing || isVideoProcessing ? "Processing Media..." : "Submit Product for Review"}
-              </Button>
-            </form>
+                {usingMockApi && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+                    Mock API is enabled. Products will not persist after refresh. Switch to a real database to save permanently.
+                  </div>
+                )}
+                <h2 className="text-xl font-bold border-b pb-4">Product Information</h2>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Product Name *</label>
+                    <Input
+                      required
+                      value={formData.productName}
+                      onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                      placeholder="Enter product name"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Category *</label>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) => setFormData({ ...formData, category: value })}
+                      disabled={categoriesLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={categoriesLoading ? "Loading..." : "Select Category"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Price (Le) *</label>
+                    <Input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Stock</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={formData.stock}
+                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Location *</label>
+                    <Input
+                      required
+                      value={formData.location}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      placeholder="City, Country"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Product Description *</label>
+                  <Textarea
+                    required
+                    rows={4}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Describe your product in detail..."
+                  />
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Product Image *</label>
+                    <Input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageSelect}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-accent/50 transition-colors"
+                    >
+                      {productImage ? (
+                        <img
+                          src={productImage}
+                          alt="Selected product"
+                          className="mx-auto h-36 w-full rounded-md object-cover"
+                        />
+                      ) : (
+                        <div className="py-5">
+                          <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground">Click to upload image</p>
+                          <p className="text-xs text-muted-foreground/80 mt-1">Max 5MB</p>
+                        </div>
+                      )}
+                    </button>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground truncate">
+                        {productImageName || "No image selected"}
+                      </p>
+                      {productImage && (
+                        <Button type="button" variant="ghost" size="sm" onClick={clearImage} className="h-7 px-2 text-xs">
+                          <X className="h-3 w-3 mr-1" />
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Product Video (Optional)</label>
+                    <Input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={handleVideoSelect}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      className="w-full border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-accent/50 transition-colors"
+                    >
+                      {productVideoPreviewUrl ? (
+                        <video
+                          src={productVideoPreviewUrl}
+                          controls
+                          className="mx-auto h-36 w-full rounded-md object-cover"
+                        />
+                      ) : (
+                        <div className="py-5">
+                          <Video className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground">Click to upload video</p>
+                          <p className="text-xs text-muted-foreground/80 mt-1">MP4/MOV/WebM, max 8MB</p>
+                        </div>
+                      )}
+                    </button>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground truncate">
+                        {productVideoName || "No video selected"}
+                      </p>
+                      {productVideo && (
+                        <Button type="button" variant="ghost" size="sm" onClick={clearVideo} className="h-7 px-2 text-xs">
+                          <X className="h-3 w-3 mr-1" />
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="gold"
+                  size="lg"
+                  className="w-full"
+                  disabled={isSubmitting || isImageProcessing || isVideoProcessing}
+                >
+                  {isSubmitting
+                    ? "Submitting Product..."
+                    : isImageProcessing || isVideoProcessing
+                      ? "Processing Media..."
+                      : usingMockApi
+                        ? "Submit Product for Review"
+                        : "Publish Product"}
+                </Button>
+              </form>
+            )}
           </div>
         </section>
       </main>

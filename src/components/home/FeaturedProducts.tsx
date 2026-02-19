@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Product } from "@/types/product";
-import { ProductCard } from "@/components/products/ProductCard";
+import { DealProductCard } from "@/components/products/DealProductCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -38,7 +38,7 @@ export function FeaturedProducts() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-4">
           {isLoading &&
             Array.from({ length: 10 }).map((_, index) => (
               <div
@@ -84,7 +84,7 @@ export function FeaturedProducts() {
             !isError &&
             featuredProducts.map((product, index) => (
               <div key={product.id} style={{ animationDelay: `${index * 0.05}s` }}>
-                <ProductCard product={product} />
+                <DealProductCard product={product} discountCap={30} />
               </div>
             ))}
         </div>

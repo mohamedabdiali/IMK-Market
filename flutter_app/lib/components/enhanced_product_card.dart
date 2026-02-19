@@ -67,7 +67,9 @@ class _EnhancedProductCardState extends State<EnhancedProductCard>
                       // Image with gradient overlay
                       Stack(
                         children: [
-                          Expanded(
+                          SizedBox(
+                            height: 140,
+                            width: double.infinity,
                             child: Container(
                               color: Colors.grey[300],
                               child: widget.product.images.isNotEmpty
@@ -109,8 +111,10 @@ class _EnhancedProductCardState extends State<EnhancedProductCard>
                                       ? Colors.red
                                       : Colors.grey[600],
                                 ),
-                                onPressed: () {
-                                  wishlist.toggleFavorite(widget.product.id);
+                                onPressed: () async {
+                                  await wishlist.toggleFavorite(
+                                    widget.product.id,
+                                  );
                                 },
                               ),
                             ),
@@ -180,20 +184,37 @@ class _EnhancedProductCardState extends State<EnhancedProductCard>
                                 ),
                                 InkWell(
                                   onTap: widget.product.stock > 0
-                                      ? () {
-                                          context
-                                              .read<CartProvider>()
-                                              .addProduct(widget.product);
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Added to cart!'),
-                                              duration: Duration(
-                                                milliseconds: 800,
-                                              ),
-                                            ),
-                                          );
+                                      ? () async {
+                                          try {
+                                            await context
+                                                .read<CartProvider>()
+                                                .addProduct(widget.product);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content:
+                                                      Text('Added to cart!'),
+                                                  duration: Duration(
+                                                    milliseconds: 800,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Failed to add: ${e.toString()}',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
                                         }
                                       : null,
                                   child: Container(

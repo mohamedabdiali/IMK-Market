@@ -14,6 +14,7 @@ class _EnhancedLoginPageState extends State<EnhancedLoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   bool _isLogin = true;
   bool _obscurePassword = true;
 
@@ -22,6 +23,7 @@ class _EnhancedLoginPageState extends State<EnhancedLoginPage> {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -38,6 +40,9 @@ class _EnhancedLoginPageState extends State<EnhancedLoginPage> {
           _emailController.text.trim(),
           _passwordController.text,
           _nameController.text.trim(),
+          phone: _phoneController.text.trim().isEmpty
+              ? null
+              : _phoneController.text.trim(),
         );
       }
 
@@ -124,6 +129,27 @@ class _EnhancedLoginPageState extends State<EnhancedLoginPage> {
                           decoration: InputDecoration(
                             labelText: 'Full Name',
                             prefixIcon: const Icon(Icons.person),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Colors.blue,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                      if (!_isLogin) ...[
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                            labelText: 'Phone (optional)',
+                            prefixIcon: const Icon(Icons.phone),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -228,6 +254,7 @@ class _EnhancedLoginPageState extends State<EnhancedLoginPage> {
                             _emailController.clear();
                             _passwordController.clear();
                             _nameController.clear();
+                            _phoneController.clear();
                           },
                           child: Text(
                             _isLogin

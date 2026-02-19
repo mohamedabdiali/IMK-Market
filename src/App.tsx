@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { CartProvider } from "@/context/CartContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { WishlistProvider } from "@/context/WishlistContext";
@@ -18,10 +18,9 @@ import Order from "./pages/Order";
 import TrackOrder from "./pages/TrackOrder";
 import MarketPrices from "./pages/MarketPrices";
 import Wishlist from "./pages/Wishlist";
-import Account from "./pages/Account";
+import CustomerDashboard from "./pages/CustomerDashboard";
 
 import NotFound from "./pages/NotFound";
-import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminProducts from "./pages/admin/AdminProducts";
@@ -56,7 +55,7 @@ const App = () => (
                 <Route path="/products" element={<Products />} />
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/wishlist" element={<Wishlist />} />
-                <Route path="/account" element={<Account />} />
+                <Route path="/account" element={<CustomerDashboard />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/sell" element={<Sell />} />
@@ -77,7 +76,7 @@ const App = () => (
                 <Route path="/seller" element={<RBACProtectedRoute requireSeller><SellerDashboard /></RBACProtectedRoute>} />
 
                 {/* Legacy Admin Routes */}
-                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/admin/login" element={<Navigate to="/login" replace />} />
                 <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
                 <Route path="/admin/orders" element={<ProtectedRoute><AdminOrders /></ProtectedRoute>} />
                 <Route path="/admin/products" element={<ProtectedRoute><AdminProducts /></ProtectedRoute>} />

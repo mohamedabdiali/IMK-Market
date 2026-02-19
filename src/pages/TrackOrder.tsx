@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/cart/CartDrawer";
@@ -37,7 +37,9 @@ function formatDate(value?: string | null) {
 }
 
 export default function TrackOrder() {
-  const { user, loginAsTrackingCustomer } = useAuth();
+  const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuth();
+  const isCustomer = user?.source === "customer";
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     orderTrackingId:
@@ -48,6 +50,14 @@ export default function TrackOrder() {
   const hasAutoRequested = useRef(false);
 
   const loadTracking = useCallback(async (payload?: Partial<typeof formData>) => {
+    if (!isCustomer) {
+      toast({
+        title: "Login required",
+        description: "Please sign in to your customer account before tracking orders.",
+        variant: "destructive",
+      });
+      return;
+    }
     const request = {
       orderTrackingId: (payload?.orderTrackingId ?? formData.orderTrackingId).trim(),
     };
@@ -65,12 +75,6 @@ export default function TrackOrder() {
     try {
       const tracked = await api.trackOrder(request);
       setResult(tracked);
-      if (!user) {
-        loginAsTrackingCustomer(
-          tracked.id || request.orderTrackingId,
-          tracked.orderTrackingId || tracked.trackingNumber || request.orderTrackingId
-        );
-      }
       const next = new URLSearchParams();
       if (request.orderTrackingId) next.set("orderTrackingId", request.orderTrackingId);
       setSearchParams(next, { replace: true });
@@ -84,18 +88,18 @@ export default function TrackOrder() {
     } finally {
       setIsLoading(false);
     }
-  }, [formData, loginAsTrackingCustomer, setSearchParams, user]);
+  }, [formData, isCustomer, setSearchParams]);
 
   useEffect(() => {
-    if (hasAutoRequested.current) return;
+    if (hasAutoRequested.current || !isCustomer) return;
     const orderTrackingId =
       searchParams.get("orderTrackingId") || searchParams.get("trackingNumber") || searchParams.get("orderId") || "";
-    if (!orderTrackingId && !(user?.source === "tracking" && (user.trackingNumber || user.trackingOrderId))) return;
+    if (!orderTrackingId) return;
     hasAutoRequested.current = true;
     void loadTracking({
-      orderTrackingId: orderTrackingId || user?.trackingNumber || user?.trackingOrderId || "",
+      orderTrackingId,
     });
-  }, [searchParams, loadTracking, user]);
+  }, [searchParams, loadTracking, isCustomer]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -115,44 +119,62 @@ export default function TrackOrder() {
 
         <section className="py-10">
           <div className="container max-w-5xl space-y-8">
-            <div className="bg-card rounded-xl border border-border shadow-sm p-6 md:p-8">
-              <form
-                className="grid gap-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void loadTracking();
-                }}
-              >
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Order Tracking ID</label>
-                  <Input
-                    required
-                    placeholder="TRK-XXXXXXXXXX or ORD-XXXXXX"
-                    value={formData.orderTrackingId}
-                    onChange={(event) =>
-                      setFormData((prev) => ({ ...prev, orderTrackingId: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <Button type="submit" variant="gold" disabled={isLoading}>
-                    {isLoading ? "Checking..." : user ? "Track Order" : "Login & Track Order"}
-                  </Button>
-                  <Link to="/order">
-                    <Button type="button" variant="outline">
-                      Back to Checkout
-                    </Button>
+            {!isCustomer && (
+              <div className="bg-card rounded-xl border border-border shadow-sm p-6 md:p-8 text-center space-y-4">
+                <h2 className="text-2xl font-bold">Customer Login Required</h2>
+                <p className="text-muted-foreground">
+                  {isAuthenticated
+                    ? "You're signed in with a non-customer account. Please switch to a customer account to track orders."
+                    : "Please sign in to your customer account before tracking your order."}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Link to="/login?tab=customer" state={{ from: location }}>
+                    <Button variant="gold">Login / Sign Up</Button>
                   </Link>
+                  {isAuthenticated && (
+                    <Button variant="outline" onClick={logout}>
+                      Logout
+                    </Button>
+                  )}
                 </div>
-                {!user && (
-                  <p className="text-xs text-muted-foreground">
-                    Enter a valid tracking ID to sign in automatically and view your tracking timeline.
-                  </p>
-                )}
-              </form>
-            </div>
+              </div>
+            )}
 
-            {result && (
+            {isCustomer && (
+              <div className="bg-card rounded-xl border border-border shadow-sm p-6 md:p-8">
+                <form
+                  className="grid gap-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void loadTracking();
+                  }}
+                >
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Order Tracking ID</label>
+                    <Input
+                      required
+                      placeholder="TRK-XXXXXXXXXX or ORD-XXXXXX"
+                      value={formData.orderTrackingId}
+                      onChange={(event) =>
+                        setFormData((prev) => ({ ...prev, orderTrackingId: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button type="submit" variant="gold" disabled={isLoading}>
+                      {isLoading ? "Checking..." : "Track Order"}
+                    </Button>
+                    <Link to="/order">
+                      <Button type="button" variant="outline">
+                        Back to Checkout
+                      </Button>
+                    </Link>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {isCustomer && result && (
               <div className="space-y-6">
                 <div className="bg-card rounded-xl border border-border shadow-sm p-6 md:p-8 space-y-5">
                   <div className="flex flex-wrap items-center gap-3 justify-between">

@@ -53,6 +53,7 @@ const emptyForm = {
 export default function AdminProductManagement() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
+  const usingMockApi = import.meta.env.VITE_USE_MOCK_API === "true";
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -521,6 +522,12 @@ export default function AdminProductManagement() {
       <AdminSidebar />
       <main className="flex-1 p-8">
         <AdminTopActions />
+        {usingMockApi && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Mock API is enabled. Product changes will not persist after refresh or server restart.
+            Configure a real database to make products permanent.
+          </div>
+        )}
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Product Management</h1>

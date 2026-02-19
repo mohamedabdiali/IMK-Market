@@ -52,12 +52,25 @@ const loadGoogleIdentityScript = () =>
 export default function EnhancedLogin() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login, loginSuperAdmin, loginSeller, loginSellerWithGoogle, loginCustomer } = useAuth();
+    const { user, isAuthenticated, login, loginSuperAdmin, loginSeller, loginSellerWithGoogle, loginCustomer, registerCustomer, logout } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState("customer");
     const googleButtonRef = useRef<HTMLDivElement | null>(null);
     const [googleReady, setGoogleReady] = useState(false);
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+    const demoCustomerPhone = (import.meta.env.VITE_DEMO_CUSTOMER_PHONE as string | undefined) || "+23270000000";
+    const demoCustomerPassword = (import.meta.env.VITE_DEMO_CUSTOMER_PASSWORD as string | undefined) || "Demo@12345";
+    const resolveRedirect = useCallback(
+        (fallback: string) => {
+            const state = location.state as { from?: { pathname?: string; search?: string } } | null;
+            const targetPath = state?.from?.pathname;
+            if (targetPath && targetPath !== "/login") {
+                return `${targetPath}${state?.from?.search || ""}`;
+            }
+            return fallback;
+        },
+        [location.state],
+    );
 
     // Super Admin Login
     const [superAdminData, setSuperAdminData] = useState({ email: "", password: "" });
@@ -71,7 +84,7 @@ export default function EnhancedLogin() {
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
-                    navigate("/super-admin");
+                    navigate(resolveRedirect("/super-admin"));
                 }
             } else {
                 toast.error("Invalid credentials");
@@ -95,9 +108,7 @@ export default function EnhancedLogin() {
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
-                    const state = location.state as { from?: { pathname?: string } } | null;
-                    const from = state?.from?.pathname || "/admin";
-                    navigate(from);
+                    navigate(resolveRedirect("/admin"));
                 }
             } else {
                 toast.error("Invalid credentials");
@@ -121,7 +132,7 @@ export default function EnhancedLogin() {
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
-                    navigate("/seller");
+                    navigate(resolveRedirect("/seller"));
                 }
             } else {
                 toast.error("Invalid credentials");
@@ -157,7 +168,7 @@ export default function EnhancedLogin() {
                     if (result.mustReset) {
                         navigate("/reset-password");
                     } else {
-                        navigate("/seller");
+                        navigate(resolveRedirect("/seller"));
                     }
                     return;
                 }
@@ -180,7 +191,7 @@ export default function EnhancedLogin() {
                 setIsLoading(false);
             }
         },
-        [loginSellerWithGoogle, navigate],
+        [loginSellerWithGoogle, navigate, resolveRedirect],
     );
 
     useEffect(() => {
@@ -220,8 +231,29 @@ export default function EnhancedLogin() {
         });
     }, [googleReady, googleClientId, handleGoogleCredential]);
 
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get("tab");
+        if (tab && ["customer", "seller", "admin", "super-admin"].includes(tab)) {
+            setActiveTab(tab);
+        }
+        const mode = params.get("mode");
+        if (tab === "customer" && (mode === "register" || mode === "login")) {
+            setCustomerMode(mode);
+        }
+    }, [location.search]);
+
     // Customer Login
     const [customerData, setCustomerData] = useState({ phone: "", password: "" });
+    const [customerRegisterData, setCustomerRegisterData] = useState({
+        name: "",
+        phone: "",
+        email: "",
+        password: "",
+        confirmPassword: "",
+    });
+    const [customerMode, setCustomerMode] = useState<"login" | "register">("login");
+
     const handleCustomerLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
@@ -232,13 +264,61 @@ export default function EnhancedLogin() {
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
-                    navigate("/");
+                    navigate(resolveRedirect("/account"));
                 }
             } else {
                 toast.error("Invalid credentials");
             }
         } catch (error) {
             toast.error("Login failed");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleCustomerRegister = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (customerRegisterData.password.length < 6) {
+            toast.error("Password must be at least 6 characters.");
+            return;
+        }
+        if (customerRegisterData.password !== customerRegisterData.confirmPassword) {
+            toast.error("Passwords do not match.");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const success = await registerCustomer({
+                name: customerRegisterData.name.trim(),
+                email: customerRegisterData.email.trim() || undefined,
+                phone: customerRegisterData.phone.trim(),
+                password: customerRegisterData.password,
+            });
+            if (success) {
+                toast.success("Account created successfully.");
+                navigate(resolveRedirect("/account"));
+            } else {
+                toast.error("Registration failed");
+            }
+        } catch (error) {
+            toast.error("Registration failed");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDemoLogin = async () => {
+        setIsLoading(true);
+        try {
+            const result = await loginCustomer(demoCustomerPhone, demoCustomerPassword);
+            if (result.success) {
+                toast.success("Signed in with demo account");
+                navigate(resolveRedirect("/account"));
+            } else {
+                toast.error("Demo login failed");
+            }
+        } catch {
+            toast.error("Demo login failed");
         } finally {
             setIsLoading(false);
         }
@@ -254,6 +334,21 @@ export default function EnhancedLogin() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
+                    {isAuthenticated && user && (
+                        <div className="mb-4 rounded-lg border border-border bg-secondary/20 p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="font-medium">{user.name || user.email || "Signed in"}</p>
+                                    <p className="text-muted-foreground">
+                                        {user.roles?.length ? user.roles.join(", ") : "Account active"}
+                                    </p>
+                                </div>
+                                <Button variant="outline" size="sm" onClick={logout}>
+                                    Logout
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
                         <TabsList className="grid w-full grid-cols-4">
                             <TabsTrigger value="customer">
@@ -270,44 +365,156 @@ export default function EnhancedLogin() {
 
                         {/* Customer Login */}
                         <TabsContent value="customer">
-                            <form onSubmit={handleCustomerLogin} className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-phone">Phone Number</Label>
-                                    <Input
-                                        id="customer-phone"
-                                        type="tel"
-                                        placeholder="+232-XX-XXX-XXX"
-                                        value={customerData.phone}
-                                        onChange={(e) => setCustomerData({ ...customerData, phone: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="customer-password">Password</Label>
-                                    <Input
-                                        id="customer-password"
-                                        type="password"
-                                        value={customerData.password}
-                                        onChange={(e) => setCustomerData({ ...customerData, password: e.target.value })}
-                                        required
-                                    />
-                                </div>
-                                <Button type="submit" className="w-full" disabled={isLoading}>
-                                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Sign in as Customer
-                                </Button>
-                                <p className="text-sm text-center text-muted-foreground">
-                                    Don't have an account?{" "}
+                            {customerMode === "login" ? (
+                                <form onSubmit={handleCustomerLogin} className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-phone">Phone Number</Label>
+                                        <Input
+                                            id="customer-phone"
+                                            type="tel"
+                                            placeholder="+232-XX-XXX-XXX"
+                                            value={customerData.phone}
+                                            onChange={(e) =>
+                                                setCustomerData({ ...customerData, phone: e.target.value })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-password">Password</Label>
+                                        <Input
+                                            id="customer-password"
+                                            type="password"
+                                            value={customerData.password}
+                                            onChange={(e) =>
+                                                setCustomerData({ ...customerData, password: e.target.value })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Sign in as Customer
+                                    </Button>
                                     <Button
                                         type="button"
-                                        variant="link"
-                                        className="p-0"
-                                        onClick={() => navigate("/register")}
+                                        variant="outline"
+                                        className="w-full"
+                                        onClick={handleDemoLogin}
+                                        disabled={isLoading}
                                     >
-                                        Sign up
+                                        Use Demo Customer
                                     </Button>
-                                </p>
-                            </form>
+                                    <p className="text-xs text-center text-muted-foreground">
+                                        Demo: {demoCustomerPhone} / {demoCustomerPassword}
+                                    </p>
+                                    <p className="text-sm text-center text-muted-foreground">
+                                        Don&apos;t have an account?{" "}
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            className="p-0"
+                                            onClick={() => setCustomerMode("register")}
+                                        >
+                                            Sign up
+                                        </Button>
+                                    </p>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleCustomerRegister} className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-name">Full Name</Label>
+                                        <Input
+                                            id="customer-name"
+                                            placeholder="Full name"
+                                            value={customerRegisterData.name}
+                                            onChange={(e) =>
+                                                setCustomerRegisterData({
+                                                    ...customerRegisterData,
+                                                    name: e.target.value,
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-phone-register">Phone Number</Label>
+                                        <Input
+                                            id="customer-phone-register"
+                                            type="tel"
+                                            placeholder="+232-XX-XXX-XXX"
+                                            value={customerRegisterData.phone}
+                                            onChange={(e) =>
+                                                setCustomerRegisterData({
+                                                    ...customerRegisterData,
+                                                    phone: e.target.value,
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-email-register">Email (Optional)</Label>
+                                        <Input
+                                            id="customer-email-register"
+                                            type="email"
+                                            placeholder="email@example.com"
+                                            value={customerRegisterData.email}
+                                            onChange={(e) =>
+                                                setCustomerRegisterData({
+                                                    ...customerRegisterData,
+                                                    email: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-password-register">Password</Label>
+                                        <Input
+                                            id="customer-password-register"
+                                            type="password"
+                                            value={customerRegisterData.password}
+                                            onChange={(e) =>
+                                                setCustomerRegisterData({
+                                                    ...customerRegisterData,
+                                                    password: e.target.value,
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer-confirm-password">Confirm Password</Label>
+                                        <Input
+                                            id="customer-confirm-password"
+                                            type="password"
+                                            value={customerRegisterData.confirmPassword}
+                                            onChange={(e) =>
+                                                setCustomerRegisterData({
+                                                    ...customerRegisterData,
+                                                    confirmPassword: e.target.value,
+                                                })
+                                            }
+                                            required
+                                        />
+                                    </div>
+                                    <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Create Customer Account
+                                    </Button>
+                                    <p className="text-sm text-center text-muted-foreground">
+                                        Already have an account?{" "}
+                                        <Button
+                                            type="button"
+                                            variant="link"
+                                            className="p-0"
+                                            onClick={() => setCustomerMode("login")}
+                                        >
+                                            Sign in
+                                        </Button>
+                                    </p>
+                                </form>
+                            )}
                         </TabsContent>
 
                         {/* Seller Login */}

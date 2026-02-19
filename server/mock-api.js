@@ -199,4 +199,6 @@ app.post("/api/payments/initiate", (_req, res) => {
   return res.json({ id: "PAY-FAKE", status: "initialized", redirectUrl: null });
 });
 
-app.listen(PORT, () => console.log("Mock API listening on", PORT));
+if (require.main === module) {
+  app.listen(PORT, () => console.log("Mock API listening on", PORT));
+}

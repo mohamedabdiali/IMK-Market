@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Heart, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { Product } from "@/types/product";
 
 export default function Wishlist() {
+  const location = useLocation();
   const { ids, clearWishlist } = useWishlist();
   const { user, isAdmin } = useAuth();
   const canAccessWishlist = Boolean(
@@ -44,7 +45,7 @@ export default function Wishlist() {
               <p className="text-muted-foreground mt-2">
                 Please sign in to your customer account to use Wishlist.
               </p>
-              <Link to="/account">
+              <Link to="/login?tab=customer" state={{ from: location }}>
                 <Button variant="gold" className="mt-6">Go to Login / Sign Up</Button>
               </Link>
             </div>

@@ -42,7 +42,7 @@ export default function SellerRegistration() {
             const result = await registerSeller(formData);
             if (result.success) {
                 toast.success("Registration successful! Your account is pending approval.");
-                setTimeout(() => navigate("/login"), 2000);
+                setTimeout(() => navigate("/login?tab=seller"), 2000);
             } else {
                 toast.error(result.message || "Registration failed");
             }
@@ -239,7 +239,7 @@ export default function SellerRegistration() {
                                 type="button"
                                 variant="link"
                                 className="p-0"
-                                onClick={() => navigate("/login")}
+                                onClick={() => navigate("/login?tab=seller")}
                             >
                                 Sign in
                             </Button>

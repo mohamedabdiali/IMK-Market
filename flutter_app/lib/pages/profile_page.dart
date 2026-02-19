@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'addresses_page.dart';
 import 'order_tracking_page.dart';
+import 'orders_page.dart';
+import 'payment_methods_page.dart';
+import 'settings_page.dart';
+import 'support_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -109,10 +114,12 @@ class ProfilePage extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => OrderTrackingPage(
-                          initialOrderId: auth.trackingOrderId,
-                          initialTrackingNumber: auth.trackingNumber,
-                        ),
+                        builder: (_) => auth.isTrackingSession
+                            ? OrderTrackingPage(
+                                initialOrderId: auth.trackingOrderId,
+                                initialTrackingNumber: auth.trackingNumber,
+                              )
+                            : const OrdersPage(),
                       ),
                     );
                   },
@@ -123,7 +130,11 @@ class ProfilePage extends StatelessWidget {
                   icon: Icons.location_on,
                   title: 'Addresses',
                   subtitle: 'Manage delivery addresses',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AddressesPage()),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 _buildProfileMenuItem(
@@ -131,7 +142,13 @@ class ProfilePage extends StatelessWidget {
                   icon: Icons.payment,
                   title: 'Payment Methods',
                   subtitle: 'Manage your payment methods',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const PaymentMethodsPage(),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 _buildProfileMenuItem(
@@ -139,7 +156,11 @@ class ProfilePage extends StatelessWidget {
                   icon: Icons.settings,
                   title: 'Settings',
                   subtitle: 'App preferences and security',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SettingsPage()),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 _buildProfileMenuItem(
@@ -147,7 +168,11 @@ class ProfilePage extends StatelessWidget {
                   icon: Icons.help,
                   title: 'Help & Support',
                   subtitle: 'Get help with your questions',
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SupportPage()),
+                    );
+                  },
                 ),
                 const SizedBox(height: 32),
                 // Logout button

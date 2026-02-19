@@ -29,14 +29,23 @@ class AuthProvider extends ChangeNotifier {
         _isTrackingSession = false;
         _trackingOrderId = null;
         _trackingNumber = null;
-        _currentUser =
-            await _firestoreService.getUser(firebaseUser.uid) ??
-            User(
-              id: firebaseUser.uid,
-              email: firebaseUser.email ?? '',
-              role: 'user',
-              createdAt: DateTime.now(),
-            );
+        final storedUser = await _firestoreService.getUser(firebaseUser.uid);
+        if (storedUser == null) {
+          final created = User(
+            id: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            name: firebaseUser.displayName,
+            phone: firebaseUser.phoneNumber,
+            photoUrl: firebaseUser.photoURL,
+            role: 'user',
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          await _firestoreService.createUser(created);
+          _currentUser = created;
+        } else {
+          _currentUser = storedUser;
+        }
       } else {
         if (!_isTrackingSession) {
           _currentUser = null;
@@ -46,7 +55,12 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> register(String email, String password, String name) async {
+  Future<void> register(
+    String email,
+    String password,
+    String name, {
+    String? phone,
+  }) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -60,8 +74,11 @@ class AuthProvider extends ChangeNotifier {
       final user = User(
         id: userCredential.user!.uid,
         email: email,
+        name: name,
+        phone: phone,
         role: 'user',
         createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
       );
 
       await _firestoreService.createUser(user);

@@ -4,9 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Product } from "@/types/product";
-import { useCart } from "@/context/CartContext";
-import { formatCurrency } from "@/lib/utils";
-import { ProductImageSlideshow } from "@/components/products/ProductImageSlideshow";
+import { DealProductCard } from "@/components/products/DealProductCard";
 
 const FLASH_DEAL_DISCOUNT_CAP = 30;
 const RAMADAN_FEATURES = [
@@ -33,7 +31,6 @@ const RAMADAN_FEATURES = [
 ];
 
 export function DealsSection() {
-  const { addToCart } = useCart();
   const {
     data: products = [],
     isLoading,
@@ -137,63 +134,13 @@ export function DealsSection() {
 
             {!isLoading &&
               !isError &&
-              dealProducts.map((product) => {
-                const hasDiscount =
-                  typeof product.originalPrice === "number" && product.originalPrice > product.price;
-                const discount = product.originalPrice
-                  ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-                  : 0;
-                const displayedDiscount = Math.min(discount, FLASH_DEAL_DISCOUNT_CAP);
-                const normalizedImages = (product.images ?? [])
-                  .map((src) => (typeof src === "string" ? src.trim() : ""))
-                  .filter((src) => src.length > 0);
-                const fallbackImage = typeof product.image === "string" ? product.image.trim() : "";
-                const images = normalizedImages.length
-                  ? normalizedImages
-                  : fallbackImage.length
-                    ? [fallbackImage]
-                    : [];
-
-                return (
-                  <div
-                    key={product.id}
-                    className="bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all group"
-                  >
-                    <div className="relative aspect-square bg-secondary/20 p-2">
-                      <ProductImageSlideshow
-                        images={images}
-                        alt={product.name}
-                        className="h-full w-full overflow-hidden rounded-xl border border-border/70 bg-background/90"
-                        imageClassName="h-full w-full object-cover"
-                      />
-                      {hasDiscount && (
-                        <div className="absolute top-3 left-3 px-2 py-1 bg-destructive text-destructive-foreground text-sm font-bold rounded">
-                          -{displayedDiscount}%
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-medium text-sm line-clamp-1">{product.name}</h3>
-                      <div className="flex items-baseline gap-2 mt-2">
-                        <span className="text-xl font-bold text-primary">{formatCurrency(product.price)}</span>
-                        {hasDiscount && (
-                          <span className="text-sm text-muted-foreground line-through">
-                            {formatCurrency(product.originalPrice)}
-                          </span>
-                        )}
-                      </div>
-                      <Button
-                        variant="cart"
-                        size="sm"
-                        className="w-full mt-3"
-                        onClick={() => addToCart(product)}
-                      >
-                        Add to Cart
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
+              dealProducts.map((product) => (
+                <DealProductCard
+                  key={product.id}
+                  product={product}
+                  discountCap={FLASH_DEAL_DISCOUNT_CAP}
+                />
+              ))}
           </div>
         </div>
       </div>

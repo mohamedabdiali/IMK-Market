@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/category_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/cart_provider.dart';
 import '../components/enhanced_product_card.dart';
@@ -26,19 +27,6 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
     super.dispose();
   }
 
-  late List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    _pages = [
-      _buildHomeContent(),
-      const CartPage(),
-      const WishlistPage(),
-      const ProfilePage(),
-    ];
-  }
-
   Widget _buildHomeContent() {
     return SingleChildScrollView(
       child: Column(
@@ -61,7 +49,7 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Welcome! 👋',
+                      'Welcome back',
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
                             color: Colors.white,
@@ -118,18 +106,33 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
                 const SizedBox(height: 12),
                 SizedBox(
                   height: 120,
-                  child: Consumer<ProductProvider>(
-                    builder: (context, productProvider, _) {
-                      // Mock categories (should be fetched from provider)
+                  child: Consumer<CategoryProvider>(
+                    builder: (context, categoryProvider, _) {
+                      if (categoryProvider.isLoading) {
+                        return const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      }
+
                       final categories = [
-                        CategoryMock('all', '🌟 All', Colors.blue),
-                        CategoryMock(
-                          'electronics',
-                          '📱 Electronics',
-                          Colors.orange,
+                        _CategoryView(
+                          id: 'all',
+                          name: 'All',
+                          image: '',
+                          color: Colors.blue,
                         ),
-                        CategoryMock('fashion', '👗 Fashion', Colors.pink),
-                        CategoryMock('home', '🏠 Home', Colors.green),
+                        ...categoryProvider.categories.map(
+                          (cat) => _CategoryView(
+                            id: cat.id,
+                            name: cat.name,
+                            image: cat.image,
+                            color: _categoryColor(cat.id),
+                          ),
+                        ),
                       ];
 
                       return ListView.builder(
@@ -163,10 +166,32 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    cat.emoji,
-                                    style: const TextStyle(fontSize: 32),
-                                  ),
+                                  if (cat.image.isNotEmpty)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        cat.image,
+                                        width: 36,
+                                        height: 36,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => Text(
+                                          cat.name.characters.first
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Text(
+                                      cat.name.characters.first.toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   const SizedBox(height: 8),
                                   Text(
                                     cat.name,
@@ -266,8 +291,15 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      _buildHomeContent(),
+      const CartPage(),
+      const WishlistPage(),
+      const ProfilePage(),
+    ];
+
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: pages[_currentIndex],
       bottomNavigationBar: Consumer<CartProvider>(
         builder: (context, cart, _) {
           return BottomNavigationBar(
@@ -328,11 +360,30 @@ class _EnhancedHomePageState extends State<EnhancedHomePage> {
   }
 }
 
-class CategoryMock {
+Color _categoryColor(String key) {
+  const palette = [
+    Colors.blue,
+    Colors.orange,
+    Colors.pink,
+    Colors.green,
+    Colors.teal,
+    Colors.indigo,
+    Colors.deepOrange,
+  ];
+  final idx = key.hashCode.abs() % palette.length;
+  return palette[idx];
+}
+
+class _CategoryView {
   final String id;
   final String name;
   final Color color;
-  final String emoji;
+  final String image;
 
-  CategoryMock(this.id, this.name, this.color) : emoji = name.split(' ')[0];
+  _CategoryView({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.image,
+  });
 }

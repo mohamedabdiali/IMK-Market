@@ -125,6 +125,12 @@ export const api = {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     }),
+  createSellerProduct: (token: string, payload: unknown) =>
+    apiFetch("/seller/products", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    }),
   getAdminAnalytics: (token: string) =>
     apiFetch("/admin/analytics", {
       headers: { Authorization: `Bearer ${token}` },

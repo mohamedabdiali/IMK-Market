@@ -163,7 +163,7 @@ export function Header() {
               variant="ghost"
               size="icon"
               className="hidden md:flex"
-              onClick={() => navigate("/account")}
+              onClick={() => navigate(isCustomerAuthenticated ? "/account" : "/login")}
               aria-label={isCustomerAuthenticated ? "My Account" : "Login or Sign Up"}
               title={isCustomerAuthenticated ? "My Account" : "Login / Sign Up"}
             >

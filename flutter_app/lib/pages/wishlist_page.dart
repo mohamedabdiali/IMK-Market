@@ -14,6 +14,9 @@ class WishlistPage extends StatelessWidget {
       appBar: AppBar(title: const Text('My Wishlist'), centerTitle: true),
       body: Consumer2<WishlistProvider, ProductProvider>(
         builder: (context, wishlist, products, _) {
+          if (wishlist.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final favoriteProducts = products.products
               .where((p) => wishlist.isFavorite(p.id))
               .toList();

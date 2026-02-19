@@ -588,7 +588,18 @@ let orders = [];
 })();
 
 let payments = [];
-let customerAccounts = [];
+const DEMO_CUSTOMER_PHONE = normalizeCustomerPhone(process.env.DEMO_CUSTOMER_PHONE || "+23270000000");
+const DEMO_CUSTOMER_PASSWORD = process.env.DEMO_CUSTOMER_PASSWORD || "Demo@12345";
+const demoCustomerAccount = {
+  id: createId("CUST", 4),
+  name: "Demo Customer",
+  email: "customer@demo.com",
+  phone: DEMO_CUSTOMER_PHONE,
+  passwordHash: hashPassword(DEMO_CUSTOMER_PASSWORD),
+  role: "user",
+  createdAt: nowIso(),
+};
+let customerAccounts = [demoCustomerAccount];
 let emailHistory = [
   {
     id: createId('EMAIL', 4),

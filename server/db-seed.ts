@@ -451,17 +451,18 @@ async function main() {
   // 7. CREATE DEMO CUSTOMER
   // ============================================
   console.log("🛍️  Creating demo customer...");
-  const customerPassword = createTempPassword();
+  const demoCustomerPassword = process.env.DEMO_CUSTOMER_PASSWORD || "Demo@12345";
+  const demoCustomerPhone = process.env.DEMO_CUSTOMER_PHONE || "+23270000000";
   const demoCustomer = await prisma.user.upsert({
     where: { email: "customer@demo.com" },
     update: {},
     create: {
       email: "customer@demo.com",
-      passwordHash: bcrypt.hashSync(customerPassword, 10),
+      passwordHash: bcrypt.hashSync(demoCustomerPassword, 10),
       name: "Demo Customer",
-      phone: "+971501234567",
+      phone: demoCustomerPhone,
       tenantId: imkTenant.id,
-      mustResetPassword: true,
+      mustResetPassword: false,
       passwordUpdatedAt: new Date(),
     },
   });
@@ -481,7 +482,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ Demo Customer: customer@demo.com / ${customerPassword}\n`);
+  console.log(`✅ Demo Customer: customer@demo.com / ${demoCustomerPassword}\n`);
 
   // ============================================
   // 8. CREATE DEMO SELLER
@@ -659,7 +660,7 @@ async function main() {
 
   console.log("🟣 DEMO CUSTOMER:");
   console.log(`   Email: customer@demo.com`);
-  console.log(`   Password: ${customerPassword}`);
+  console.log(`   Password: ${demoCustomerPassword}`);
   console.log(`   Access: Shopping & orders\n`);
 
   console.log("=".repeat(60));
