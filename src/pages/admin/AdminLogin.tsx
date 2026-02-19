@@ -98,13 +98,6 @@ export default function AdminLogin() {
               Back to store
             </button>
           </div>
-          <div className="mt-6 p-4 bg-muted rounded-lg">
-            <p className="text-sm text-muted-foreground text-center">
-              <strong>Demo credentials:</strong><br />
-              Email: admin@imkmarket.com<br />
-              Password: admin123
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
