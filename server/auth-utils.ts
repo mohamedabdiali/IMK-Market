@@ -12,10 +12,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-prod";
 export interface AuthUser {
     userId: string;
     email: string;
+    username?: string;
     tenantId?: string;
     roles: string[];
     permissions: { resource: string; action: string }[];
     isSuperAdmin: boolean;
+    mustResetPassword?: boolean;
+    disabled?: boolean;
 }
 
 export interface AuthRequest extends Request {
@@ -74,10 +77,13 @@ export async function generateToken(userId: string): Promise<{ token: string; us
     const authUser: AuthUser = {
         userId: user.id,
         email: user.email,
+        username: user.username ?? undefined,
         tenantId: user.tenantId ?? undefined,
         roles,
         permissions,
         isSuperAdmin: Boolean(user.isSuperAdmin),
+        mustResetPassword: Boolean(user.mustResetPassword),
+        disabled: Boolean(user.disabled),
     };
 
     const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: "12h" });
@@ -110,7 +116,19 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     const token = authHeader.substring(7);
     try {
         const user = verifyToken(token);
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
         req.user = user;
+        const allowlist = [
+            "/api/auth/password/reset",
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/me",
+        ];
+        if (user.mustResetPassword && !allowlist.some((path) => req.originalUrl.startsWith(path))) {
+            return res.status(403).json({ error: "Password reset required" });
+        }
         next();
     } catch (error) {
         return res.status(401).json({ error: "Invalid or expired token" });
@@ -248,6 +266,19 @@ export function isSeller(user: AuthUser): boolean {
  */
 export function isCustomer(user: AuthUser): boolean {
     return hasRole(user, "Customer");
+}
+
+/**
+ * Require seller access (seller role or super admin)
+ */
+export function requireSeller(req: AuthRequest, res: Response, next: NextFunction) {
+    if (!req.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (req.user.isSuperAdmin || isSeller(req.user)) {
+        return next();
+    }
+    return res.status(403).json({ error: "Seller access required" });
 }
 
 // ============================================

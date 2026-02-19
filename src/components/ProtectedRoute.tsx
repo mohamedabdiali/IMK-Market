@@ -9,6 +9,7 @@ interface ProtectedRouteProps {
     requireSeller?: boolean;
     requirePermission?: { resource: string; action: string };
     requireRole?: string | string[];
+    allowPasswordReset?: boolean;
 }
 
 export function ProtectedRoute({
@@ -18,12 +19,17 @@ export function ProtectedRoute({
     requireSeller,
     requirePermission,
     requireRole,
+    allowPasswordReset,
 }: ProtectedRouteProps) {
-    const { isAuthenticated, isSuperAdmin, isAdmin, isSeller, hasPermission, hasRole } = useAuth();
+    const { user, isAuthenticated, isSuperAdmin, isAdmin, isSeller, hasPermission, hasRole } = useAuth();
 
     // Check if user is authenticated
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
+    }
+
+    if (user?.mustResetPassword && !allowPasswordReset) {
+        return <Navigate to="/reset-password" replace />;
     }
 
     // Check super admin requirement

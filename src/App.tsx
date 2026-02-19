@@ -38,6 +38,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import SellerDashboard from "./pages/SellerDashboard";
 import SellerRegistration from "./pages/SellerRegistration";
 import Unauthorized from "./pages/Unauthorized";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ const App = () => (
                 <Route path="/login" element={<EnhancedLogin />} />
                 <Route path="/seller/register" element={<SellerRegistration />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="/reset-password" element={<RBACProtectedRoute allowPasswordReset><ResetPassword /></RBACProtectedRoute>} />
 
                 {/* Super Admin Routes */}
                 <Route path="/super-admin" element={<RBACProtectedRoute requireSuperAdmin><SuperAdminDashboard /></RBACProtectedRoute>} />

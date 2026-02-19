@@ -18,15 +18,19 @@ export default function AdminLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    const success = await login(email, password);
+    const result = await login(email, password);
     setIsLoading(false);
 
-    if (success) {
+    if (result.success) {
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
-      navigate("/admin");
+      if (result.mustReset) {
+        navigate("/reset-password");
+      } else {
+        navigate("/admin");
+      }
     } else {
       toast({
         title: "Login failed",

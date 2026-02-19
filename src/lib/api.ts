@@ -15,15 +15,24 @@ const resolveApiBase = () => {
 };
 
 const API_BASE = resolveApiBase();
+const CSRF_KEY = "csrf_token";
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers || {});
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  const method = (options?.method || "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") {
+    const csrfToken = typeof window !== "undefined" ? localStorage.getItem(CSRF_KEY) : null;
+    if (csrfToken && !headers.has("x-csrf-token")) {
+      headers.set("x-csrf-token", csrfToken);
+    }
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    credentials: "include",
   });
   if (!res.ok) {
     const message = await res.text();
@@ -66,11 +75,11 @@ export const api = {
   uploadPaymentProof: (id: string, payload: { proofImage?: string; proofVideo?: string }) =>
     apiFetch(`/payments/${id}/proof`, { method: "PATCH", body: JSON.stringify(payload) }),
   customerRegister: (payload: { name?: string; email?: string; phone: string; password: string }) =>
-    apiFetch("/customers/register", { method: "POST", body: JSON.stringify(payload) }),
+    apiFetch("/auth/customer/register", { method: "POST", body: JSON.stringify(payload) }),
   customerLogin: (payload: { phone: string; password: string }) =>
-    apiFetch("/customers/login", { method: "POST", body: JSON.stringify(payload) }),
+    apiFetch("/auth/customer/login", { method: "POST", body: JSON.stringify(payload) }),
   adminLogin: (payload: { email: string; password: string }) =>
-    apiFetch("/admin/login", { method: "POST", body: JSON.stringify(payload) }),
+    apiFetch("/auth/admin/login", { method: "POST", body: JSON.stringify(payload) }),
   getAdminOrders: (token: string) =>
     apiFetch("/admin/orders", {
       headers: { Authorization: `Bearer ${token}` },

@@ -17,6 +17,52 @@ const PAYMENT_CURRENCY = process.env.PAYMENT_CURRENCY || 'SLE';
 const MOCK_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@imkmarket.com';
 const MOCK_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
+const MOCK_REFRESH_DAYS = 30;
+const mockSessions = new Map();
+
+const createCsrfToken = () => crypto.randomBytes(16).toString('hex');
+
+const parseCookies = (cookieHeader = '') => {
+  const cookies = {};
+  cookieHeader.split(';').forEach((part) => {
+    const [name, ...rest] = part.trim().split('=');
+    if (!name) return;
+    cookies[name] = decodeURIComponent(rest.join('='));
+  });
+  return cookies;
+};
+
+const buildCookie = (name, value, opts = {}) => {
+  const segments = [`${name}=${encodeURIComponent(value)}`];
+  if (opts.maxAge !== undefined) segments.push(`Max-Age=${opts.maxAge}`);
+  if (opts.path) segments.push(`Path=${opts.path}`);
+  if (opts.httpOnly) segments.push('HttpOnly');
+  if (opts.sameSite) segments.push(`SameSite=${opts.sameSite}`);
+  return segments.join('; ');
+};
+
+const setAuthCookies = (res, refreshToken, csrfToken) => {
+  const maxAge = MOCK_REFRESH_DAYS * 24 * 60 * 60;
+  res.setHeader('Set-Cookie', [
+    buildCookie('refresh_token', refreshToken, { maxAge, path: '/api/auth', httpOnly: true, sameSite: 'Strict' }),
+    buildCookie('csrf_token', csrfToken, { maxAge, path: '/', sameSite: 'Strict' }),
+  ]);
+};
+
+const clearAuthCookies = (res) => {
+  res.setHeader('Set-Cookie', [
+    buildCookie('refresh_token', '', { maxAge: 0, path: '/api/auth', httpOnly: true, sameSite: 'Strict' }),
+    buildCookie('csrf_token', '', { maxAge: 0, path: '/', sameSite: 'Strict' }),
+  ]);
+};
+
+const issueMockSession = (user) => {
+  const refreshToken = createId('RT', 8);
+  const csrfToken = createCsrfToken();
+  mockSessions.set(refreshToken, { user, csrfToken });
+  return { refreshToken, csrfToken };
+};
+
 const createId = (prefix, bytes = 4) => `${prefix}-${crypto.randomBytes(bytes).toString('hex').toUpperCase()}`;
 const nowIso = () => new Date().toISOString();
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -1027,17 +1073,21 @@ app.post('/api/auth/customer/register', (req, res) => {
     createdAt: nowIso(),
   };
   customerAccounts.unshift(account);
+  const user = {
+    userId: account.id,
+    name: account.name,
+    phone: account.phone,
+    email: account.email,
+    roles: ['Customer'],
+    permissions: [],
+    isSuperAdmin: false
+  };
+  const session = issueMockSession(user);
+  setAuthCookies(res, session.refreshToken, session.csrfToken);
   return res.status(201).json({
     token: `customer-${account.id}`,
-    user: {
-      userId: account.id,
-      name: account.name,
-      phone: account.phone,
-      email: account.email,
-      roles: ['Customer'],
-      permissions: [],
-      isSuperAdmin: false
-    }
+    user,
+    csrfToken: session.csrfToken
   });
 });
 
@@ -1055,17 +1105,21 @@ app.post('/api/auth/customer/login', (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
+  const user = {
+    userId: account.id,
+    name: account.name,
+    phone: account.phone,
+    email: account.email,
+    roles: ['Customer'],
+    permissions: [],
+    isSuperAdmin: false
+  };
+  const session = issueMockSession(user);
+  setAuthCookies(res, session.refreshToken, session.csrfToken);
   return res.json({
     token: `customer-${account.id}`,
-    user: {
-      userId: account.id,
-      name: account.name,
-      phone: account.phone,
-      email: account.email,
-      roles: ['Customer'],
-      permissions: [],
-      isSuperAdmin: false
-    }
+    user,
+    csrfToken: session.csrfToken
   });
 });
 
@@ -1079,16 +1133,20 @@ app.post('/api/auth/admin/login', (req, res) => {
   if (!emailOk || !passwordOk) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+  const user = {
+    userId: 'admin-1',
+    email: email,
+    name: 'Store Manager',
+    roles: ['Manager'],
+    permissions: [{ resource: 'orders', action: 'read' }, { resource: 'products', action: 'manage' }],
+    isSuperAdmin: false
+  };
+  const session = issueMockSession(user);
+  setAuthCookies(res, session.refreshToken, session.csrfToken);
   return res.json({
     token: 'mock-admin-token',
-    user: {
-      userId: 'admin-1',
-      email: email,
-      name: 'Store Manager',
-      roles: ['Manager'],
-      permissions: [{ resource: 'orders', action: 'read' }, { resource: 'products', action: 'manage' }],
-      isSuperAdmin: false
-    }
+    user,
+    csrfToken: session.csrfToken
   });
 });
 
@@ -1104,16 +1162,20 @@ app.post('/api/auth/super-admin/login', (req, res) => {
 
   if (emailMatches && passwordMatches) {
     console.log(`[AUTH] Super Admin login SUCCESS: ${email}`);
+    const user = {
+      userId: 'super-admin-1',
+      email: SUPER_ADMIN_EMAIL,
+      name: 'Super System Admin',
+      roles: ['Super Admin'],
+      permissions: [],
+      isSuperAdmin: true
+    };
+    const session = issueMockSession(user);
+    setAuthCookies(res, session.refreshToken, session.csrfToken);
     return res.json({
       token: 'mock-super-admin-token',
-      user: {
-        userId: 'super-admin-1',
-        email: SUPER_ADMIN_EMAIL,
-        name: 'Super System Admin',
-        roles: ['Super Admin'],
-        permissions: [],
-        isSuperAdmin: true
-      }
+      user,
+      csrfToken: session.csrfToken
     });
   }
   console.log(`[AUTH] Super Admin login FAILED: ${email}`);
@@ -1124,24 +1186,81 @@ app.post('/api/auth/super-admin/login', (req, res) => {
 app.post('/api/auth/seller/login', (req, res) => {
   const { email, password } = req.body || {};
   if (email === 'seller@example.com' && (password === 'Seller123!@#' || password === 'seller123')) {
+    const user = {
+      userId: 'seller-1',
+      email: 'seller@example.com',
+      name: 'Demo Seller',
+      roles: ['Seller'],
+      permissions: [{ resource: 'products', action: 'own' }],
+      isSuperAdmin: false,
+      sellerProfile: {
+        id: 'sp-1',
+        businessName: 'Demo Store',
+        status: 'active'
+      }
+    };
+    const session = issueMockSession(user);
+    setAuthCookies(res, session.refreshToken, session.csrfToken);
     return res.json({
       token: 'mock-seller-token',
-      user: {
-        userId: 'seller-1',
-        email: 'seller@example.com',
-        name: 'Demo Seller',
-        roles: ['Seller'],
-        permissions: [{ resource: 'products', action: 'own' }],
-        isSuperAdmin: false,
-        sellerProfile: {
-          id: 'sp-1',
-          businessName: 'Demo Store',
-          status: 'active'
-        }
-      }
+      user,
+      csrfToken: session.csrfToken
     });
   }
   return res.status(401).json({ error: 'Invalid credentials' });
+});
+
+app.post('/api/auth/refresh', (req, res) => {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const csrfHeader = (req.headers['x-csrf-token'] || '').toString();
+  if (!cookies.csrf_token || csrfHeader !== cookies.csrf_token) {
+    return res.status(403).json({ error: 'CSRF token invalid' });
+  }
+  const session = mockSessions.get(cookies.refresh_token);
+  if (!session) {
+    clearAuthCookies(res);
+    return res.status(401).json({ error: 'Invalid refresh token' });
+  }
+  mockSessions.delete(cookies.refresh_token);
+  const nextSession = issueMockSession(session.user);
+  setAuthCookies(res, nextSession.refreshToken, nextSession.csrfToken);
+  return res.json({
+    token: 'mock-access-token',
+    user: session.user,
+    csrfToken: nextSession.csrfToken
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const csrfHeader = (req.headers['x-csrf-token'] || '').toString();
+  if (!cookies.csrf_token || csrfHeader !== cookies.csrf_token) {
+    return res.status(403).json({ error: 'CSRF token invalid' });
+  }
+  if (cookies.refresh_token) {
+    mockSessions.delete(cookies.refresh_token);
+  }
+  clearAuthCookies(res);
+  return res.json({ success: true });
+});
+
+app.post('/api/auth/password/reset', (req, res) => {
+  const payload = req.body || {};
+  if (!payload.newPassword || payload.newPassword.length < 8) {
+    return res.status(400).json({ error: 'Invalid password' });
+  }
+  const cookies = parseCookies(req.headers.cookie || '');
+  const session = mockSessions.get(cookies.refresh_token);
+  if (!session) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const nextSession = issueMockSession({ ...session.user, mustResetPassword: false });
+  setAuthCookies(res, nextSession.refreshToken, nextSession.csrfToken);
+  return res.json({
+    token: 'mock-access-token',
+    user: { ...session.user, mustResetPassword: false },
+    csrfToken: nextSession.csrfToken
+  });
 });
 // ------------------------
 // Admin / Super Admin Middleware
@@ -1716,4 +1835,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-

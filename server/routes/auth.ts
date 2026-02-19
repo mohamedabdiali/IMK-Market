@@ -1,19 +1,147 @@
 // Enhanced Authentication Routes
 import { Router } from "express";
+import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { z } from "zod";
-import prisma from "./prisma.js";
+import prisma from "../prisma.js";
 import {
     generateToken,
     authenticate,
     AuthRequest,
     createAuditLog,
     notifySuperAdmins,
-    notifyRole,
-    createNotification
-} from "./auth-utils.js";
+    notifyRole
+} from "../auth-utils.js";
 
 const router = Router();
+
+const REFRESH_TOKEN_DAYS = Number(process.env.REFRESH_TOKEN_DAYS || 30);
+const CSRF_TOKEN_BYTES = 24;
+const isProd = process.env.NODE_ENV === "production";
+
+const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
+const generateTokenValue = (bytes = 48) => crypto.randomBytes(bytes).toString("hex");
+
+const parseCookies = (cookieHeader?: string) => {
+    const cookies: Record<string, string> = {};
+    if (!cookieHeader) return cookies;
+    const parts = cookieHeader.split(";");
+    for (const part of parts) {
+        const [name, ...rest] = part.trim().split("=");
+        if (!name) continue;
+        cookies[name] = decodeURIComponent(rest.join("="));
+    }
+    return cookies;
+};
+
+const buildCookie = (name: string, value: string, options: {
+    maxAge?: number;
+    path?: string;
+    httpOnly?: boolean;
+    sameSite?: "Strict" | "Lax" | "None";
+    secure?: boolean;
+}) => {
+    const segments = [`${name}=${encodeURIComponent(value)}`];
+    if (options.maxAge !== undefined) segments.push(`Max-Age=${options.maxAge}`);
+    if (options.path) segments.push(`Path=${options.path}`);
+    if (options.httpOnly) segments.push("HttpOnly");
+    if (options.sameSite) segments.push(`SameSite=${options.sameSite}`);
+    if (options.secure) segments.push("Secure");
+    return segments.join("; ");
+};
+
+const setAuthCookies = (res: Response, refreshToken: string, csrfToken: string) => {
+    const maxAge = REFRESH_TOKEN_DAYS * 24 * 60 * 60;
+    const cookies = [
+        buildCookie("refresh_token", refreshToken, {
+            maxAge,
+            path: "/api/auth",
+            httpOnly: true,
+            sameSite: "Strict",
+            secure: isProd,
+        }),
+        buildCookie("csrf_token", csrfToken, {
+            maxAge,
+            path: "/",
+            sameSite: "Strict",
+            secure: isProd,
+        }),
+    ];
+    res.setHeader("Set-Cookie", cookies);
+};
+
+const clearAuthCookies = (res: Response) => {
+    const cookies = [
+        buildCookie("refresh_token", "", { maxAge: 0, path: "/api/auth", httpOnly: true, sameSite: "Strict", secure: isProd }),
+        buildCookie("csrf_token", "", { maxAge: 0, path: "/", sameSite: "Strict", secure: isProd }),
+    ];
+    res.setHeader("Set-Cookie", cookies);
+};
+
+const getCookie = (req: Request, name: string) => {
+    const cookies = parseCookies(req.headers?.cookie as string | undefined);
+    return cookies[name];
+};
+
+const requireCsrf = (req: Request, res: Response): boolean => {
+    const csrfHeader = (req.headers["x-csrf-token"] || "").toString();
+    const csrfCookie = getCookie(req, "csrf_token");
+    if (!csrfHeader || !csrfCookie || csrfHeader !== csrfCookie) {
+        res.status(403).json({ error: "CSRF token invalid" });
+        return false;
+    }
+    return true;
+};
+
+const issueRefreshToken = async (userId: string) => {
+    const refreshToken = generateTokenValue();
+    const tokenHash = hashToken(refreshToken);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+    await prisma.refreshToken.create({
+        data: {
+            userId,
+            tokenHash,
+            expiresAt,
+        },
+    });
+    return refreshToken;
+};
+
+const rotateRefreshToken = async (existingToken: string) => {
+    const tokenHash = hashToken(existingToken);
+    const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+        return null;
+    }
+    const newToken = generateTokenValue();
+    const newHash = hashToken(newToken);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
+    const replacement = await prisma.refreshToken.create({
+        data: {
+            userId: stored.userId,
+            tokenHash: newHash,
+            expiresAt,
+        },
+    });
+    await prisma.refreshToken.update({
+        where: { id: stored.id },
+        data: {
+            revokedAt: new Date(),
+            replacedById: replacement.id,
+        },
+    });
+    return { token: newToken, userId: stored.userId };
+};
+
+const DEFAULT_TENANT_NAME = process.env.PUBLIC_TENANT_NAME || "IMK-Market";
+let cachedTenantId: string | null = null;
+const getDefaultTenantId = async () => {
+    if (cachedTenantId) return cachedTenantId;
+    const tenant = await prisma.tenant.findUnique({ where: { name: DEFAULT_TENANT_NAME } });
+    cachedTenantId = tenant?.id ?? null;
+    return cachedTenantId;
+};
 
 // ============================================
 // SUPER ADMIN LOGIN
@@ -39,8 +167,19 @@ router.post("/super-admin/login", async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
         const passwordValid = bcrypt.compareSync(parsed.data.password, user.passwordHash);
         if (!passwordValid) {
+            await createAuditLog({
+                userId: user.id,
+                action: "login_failed",
+                resource: "super_admin",
+                ipAddress: req.ip,
+                userAgent: req.headers["user-agent"],
+            });
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
@@ -51,6 +190,15 @@ router.post("/super-admin/login", async (req, res) => {
         });
 
         const { token, user: authUser } = await generateToken(user.id);
+
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
 
         await createAuditLog({
             userId: user.id,
@@ -63,6 +211,7 @@ router.post("/super-admin/login", async (req, res) => {
         res.json({
             token,
             user: authUser,
+            csrfToken,
             message: "Super admin login successful"
         });
     } catch (error) {
@@ -102,8 +251,20 @@ router.post("/admin/login", async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
         const passwordValid = bcrypt.compareSync(parsed.data.password, user.passwordHash);
         if (!passwordValid) {
+            await createAuditLog({
+                userId: user.id,
+                tenantId: user.tenantId || undefined,
+                action: "login_failed",
+                resource: "admin",
+                ipAddress: req.ip,
+                userAgent: req.headers["user-agent"],
+            });
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
@@ -115,6 +276,14 @@ router.post("/admin/login", async (req, res) => {
 
         const { token, user: authUser } = await generateToken(user.id);
 
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
         await createAuditLog({
             userId: user.id,
             tenantId: user.tenantId || undefined,
@@ -124,7 +293,7 @@ router.post("/admin/login", async (req, res) => {
             userAgent: req.headers["user-agent"],
         });
 
-        res.json({ token, user: authUser });
+        res.json({ token, user: authUser, csrfToken });
     } catch (error) {
         console.error("Admin login error:", error);
         res.status(500).json({ error: "Login failed" });
@@ -175,6 +344,8 @@ router.post("/seller/register", async (req, res) => {
             return res.status(409).json({ error: "Email already registered" });
         }
 
+        const tenantId = await getDefaultTenantId();
+
         // Create user
         const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
         const user = await prisma.user.create({
@@ -183,6 +354,7 @@ router.post("/seller/register", async (req, res) => {
                 passwordHash,
                 name: parsed.data.name,
                 phone: parsed.data.phone,
+                tenantId: tenantId || undefined,
             },
         });
 
@@ -196,6 +368,7 @@ router.post("/seller/register", async (req, res) => {
                 data: {
                     userId: user.id,
                     roleId: sellerRole.id,
+                    tenantId: tenantId || undefined,
                 },
             });
         }
@@ -215,6 +388,25 @@ router.post("/seller/register", async (req, res) => {
                 bankDetails: parsed.data.bankDetails ? JSON.stringify(parsed.data.bankDetails) : undefined,
                 status: "pending",
             },
+        });
+
+        await prisma.sellerStatus.create({
+            data: {
+                sellerId: sellerProfile.id,
+                status: "pending",
+                note: "Registration submitted",
+            },
+        });
+
+        await createAuditLog({
+            userId: user.id,
+            tenantId: tenantId || undefined,
+            action: "create",
+            resource: "seller_registration",
+            resourceId: sellerProfile.id,
+            changes: parsed.data,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
         });
 
         // Notify super admins
@@ -285,8 +477,20 @@ router.post("/seller/login", async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
         const passwordValid = bcrypt.compareSync(parsed.data.password, user.passwordHash);
         if (!passwordValid) {
+            await createAuditLog({
+                userId: user.id,
+                tenantId: user.tenantId || undefined,
+                action: "login_failed",
+                resource: "seller",
+                ipAddress: req.ip,
+                userAgent: req.headers["user-agent"],
+            });
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
@@ -321,10 +525,19 @@ router.post("/seller/login", async (req, res) => {
 
         const { token, user: authUser } = await generateToken(user.id);
 
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
         res.json({
             token,
             user: authUser,
-            sellerProfile: user.sellerProfile
+            sellerProfile: user.sellerProfile,
+            csrfToken,
         });
     } catch (error) {
         console.error("Seller login error:", error);
@@ -357,8 +570,20 @@ router.post("/customer/login", async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
         const passwordValid = bcrypt.compareSync(parsed.data.password, user.passwordHash);
         if (!passwordValid) {
+            await createAuditLog({
+                userId: user.id,
+                tenantId: user.tenantId || undefined,
+                action: "login_failed",
+                resource: "customer",
+                ipAddress: req.ip,
+                userAgent: req.headers["user-agent"],
+            });
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
@@ -370,7 +595,15 @@ router.post("/customer/login", async (req, res) => {
 
         const { token, user: authUser } = await generateToken(user.id);
 
-        res.json({ token, user: authUser });
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
+        res.json({ token, user: authUser, csrfToken });
     } catch (error) {
         console.error("Customer login error:", error);
         res.status(500).json({ error: "Login failed" });
@@ -407,6 +640,8 @@ router.post("/customer/register", async (req, res) => {
             return res.status(409).json({ error: "Phone number already registered" });
         }
 
+        const tenantId = await getDefaultTenantId();
+
         // Create user
         const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
         const user = await prisma.user.create({
@@ -415,6 +650,7 @@ router.post("/customer/register", async (req, res) => {
                 passwordHash,
                 name: parsed.data.name,
                 phone: parsed.data.phone,
+                tenantId: tenantId || undefined,
             },
         });
 
@@ -428,15 +664,25 @@ router.post("/customer/register", async (req, res) => {
                 data: {
                     userId: user.id,
                     roleId: customerRole.id,
+                    tenantId: tenantId || undefined,
                 },
             });
         }
 
         const { token, user: authUser } = await generateToken(user.id);
 
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
         res.status(201).json({
             token,
             user: authUser,
+            csrfToken,
             message: "Registration successful"
         });
     } catch (error) {
@@ -449,18 +695,138 @@ router.post("/customer/register", async (req, res) => {
 // TOKEN REFRESH
 // ============================================
 
-router.post("/refresh", authenticate, async (req: AuthRequest, res) => {
+router.post("/refresh", async (req, res) => {
+    try {
+        if (!requireCsrf(req, res)) return;
+        const refreshToken = getCookie(req, "refresh_token");
+        if (!refreshToken) {
+            return res.status(401).json({ error: "Missing refresh token" });
+        }
+
+        const rotated = await rotateRefreshToken(refreshToken);
+        if (!rotated) {
+            clearAuthCookies(res);
+            return res.status(401).json({ error: "Invalid refresh token" });
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: rotated.userId } });
+        if (!user || user.disabled) {
+            clearAuthCookies(res);
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
+        const { token, user: authUser } = await generateToken(rotated.userId);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, rotated.token, csrfToken);
+
+        res.json({ token, user: authUser, csrfToken });
+    } catch (error) {
+        console.error("Token refresh error:", error);
+        res.status(500).json({ error: "Token refresh failed" });
+    }
+});
+
+// ============================================
+// SELLER GOOGLE OAUTH (Placeholder)
+// ============================================
+
+router.post("/seller/google", (_req, res) => {
+    res.status(501).json({ error: "Google OAuth not configured" });
+});
+
+// ============================================
+// LOGOUT
+// ============================================
+
+router.post("/logout", async (req, res) => {
+    try {
+        if (!requireCsrf(req, res)) return;
+        const refreshToken = getCookie(req, "refresh_token");
+        if (refreshToken) {
+            const tokenHash = hashToken(refreshToken);
+            await prisma.refreshToken.updateMany({
+                where: { tokenHash, revokedAt: null },
+                data: { revokedAt: new Date() },
+            });
+        }
+        clearAuthCookies(res);
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Logout error:", error);
+        res.status(500).json({ error: "Logout failed" });
+    }
+});
+
+// ============================================
+// PASSWORD RESET (FORCED OR USER-INITIATED)
+// ============================================
+
+router.post("/password/reset", authenticate, async (req: AuthRequest, res) => {
     try {
         if (!req.user) {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        const { token, user } = await generateToken(req.user.userId);
+        const schema = z.object({
+            currentPassword: z.string().min(6).optional(),
+            newPassword: z.string().min(8),
+        });
 
-        res.json({ token, user });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+        }
+
+        const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        if (!user.mustResetPassword) {
+            if (!parsed.data.currentPassword) {
+                return res.status(400).json({ error: "Current password required" });
+            }
+            const passwordValid = bcrypt.compareSync(parsed.data.currentPassword, user.passwordHash);
+            if (!passwordValid) {
+                return res.status(401).json({ error: "Current password is incorrect" });
+            }
+        }
+
+        const newHash = bcrypt.hashSync(parsed.data.newPassword, 10);
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                passwordHash: newHash,
+                mustResetPassword: false,
+                passwordUpdatedAt: new Date(),
+                lastPasswordResetAt: new Date(),
+            },
+        });
+
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+
+        const { token, user: authUser } = await generateToken(user.id);
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
+        await createAuditLog({
+            userId: user.id,
+            tenantId: user.tenantId || undefined,
+            action: "password_reset",
+            resource: "auth",
+            resourceId: user.id,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json({ token, user: authUser, csrfToken });
     } catch (error) {
-        console.error("Token refresh error:", error);
-        res.status(500).json({ error: "Token refresh failed" });
+        console.error("Password reset error:", error);
+        res.status(500).json({ error: "Password reset failed" });
     }
 });
 
@@ -493,10 +859,13 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
         res.json({
             id: user.id,
             email: user.email,
+            username: user.username,
             name: user.name,
             phone: user.phone,
             tenantId: user.tenantId,
             isSuperAdmin: user.isSuperAdmin,
+            mustResetPassword: user.mustResetPassword,
+            disabled: user.disabled,
             roles: req.user.roles,
             permissions: req.user.permissions,
             sellerProfile: user.sellerProfile,

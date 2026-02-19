@@ -5,7 +5,7 @@ import prisma from "../prisma.js";
 import {
     authenticate,
     AuthRequest,
-    isSeller,
+    requireSeller,
     createAuditLog,
     createNotification,
     notifyRole
@@ -14,7 +14,7 @@ import {
 const router = Router();
 
 // All routes require authentication
-router.use(authenticate);
+router.use(authenticate, requireSeller);
 
 // ============================================
 // SELLER PROFILE

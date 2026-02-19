@@ -30,6 +30,7 @@ model Tenant {
   notifications Notification[]
   auditLogs     AuditLog[]
   userRoles     UserRole[]
+  subscriptions Subscription[]
 
   @@index([name])
   @@index([subscriptionStatus])
@@ -38,12 +39,17 @@ model Tenant {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
+  username      String?   @unique
   passwordHash  String
   name          String?
   phone         String?
   tenantId      String?
   tenant        Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   isSuperAdmin  Boolean   @default(false)
+  mustResetPassword Boolean @default(false)
+  passwordUpdatedAt DateTime?
+  lastPasswordResetAt DateTime?
+  disabled      Boolean   @default(false)
   lastLoginAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -52,6 +58,7 @@ model User {
   sellerProfile SellerProfile?
   notifications Notification[]
   auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
 
   @@index([email])
   @@index([tenantId])
@@ -141,6 +148,7 @@ model SellerProfile {
   updatedAt       DateTime  @updatedAt
 
   products Product[]
+  statusHistory SellerStatus[]
 
   @@index([userId])
   @@index([status])
@@ -192,6 +200,89 @@ model AuditLog {
   @@index([tenantId])
   @@index([resource])
   @@index([createdAt])
+}
+
+// ============================================
+// SUBSCRIPTIONS
+// ============================================
+
+model Subscription {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planName     String
+  status       String   @default("active") // "active" | "suspended" | "cancelled"
+  billingCycle String   @default("monthly") // "monthly" | "yearly"
+  price        Float?
+  currency     String   @default("USD")
+  startedAt    DateTime @default(now())
+  endsAt       DateTime?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+  @@unique([tenantId])
+}
+
+// ============================================
+// REFRESH TOKENS
+// ============================================
+
+model RefreshToken {
+  id            String   @id @default(cuid())
+  tokenHash     String   @unique
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  replacedById  String?
+  replacedBy    RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id])
+  replacements  RefreshToken[] @relation("RefreshTokenRotation")
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================
+// SELLER STATUS HISTORY
+// ============================================
+
+model SellerStatus {
+  id         String   @id @default(cuid())
+  sellerId   String
+  sellerProfile SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  status     String
+  note       String?
+  changedBy  String?
+  changedAt  DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([changedAt])
+}
+
+// ============================================
+// SYSTEM SETTINGS & FEATURE TOGGLES
+// ============================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model FeatureToggle {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  enabled     Boolean  @default(false)
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
 }
 
 // ============================================

@@ -54,6 +54,7 @@ app.use(
       return cb(new Error("Not allowed by CORS"));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
   })
 );
 
@@ -204,6 +205,19 @@ const CARGO_ESTIMATE_DAYS: Record<string, number> = {
   land: 7,
   sea: 18,
 };
+
+const DEFAULT_TENANT_NAME = process.env.PUBLIC_TENANT_NAME || "IMK-Market";
+let cachedDefaultTenantId: string | null = null;
+async function getDefaultTenantId() {
+  if (cachedDefaultTenantId !== null) return cachedDefaultTenantId;
+  try {
+    const tenant = await prisma.tenant.findUnique({ where: { name: DEFAULT_TENANT_NAME } });
+    cachedDefaultTenantId = tenant?.id ?? null;
+  } catch (e) {
+    cachedDefaultTenantId = null;
+  }
+  return cachedDefaultTenantId;
+}
 
 function isOrderStatus(value: string): value is OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(value);
@@ -446,6 +460,7 @@ async function createOrderRecord(payload: {
   paymentStatus: "pending" | "initialized" | "paid" | "failed";
   paymentReference?: string;
   cargoType?: string;
+  tenantId?: string;
   items: OrderItemPayload[];
 }) {
   const total = payload.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -471,6 +486,7 @@ async function createOrderRecord(payload: {
       estimatedDelivery,
       lastTrackingUpdate: createdAt,
       total,
+      tenantId: payload.tenantId,
       items: {
         create: payload.items.map((item) => ({
           productId: item.productId?.toString(),
@@ -577,7 +593,7 @@ async function ensureCategory(name: string) {
   return category;
 }
 
-import { verifyToken, AuthRequest } from "./auth-utils.js";
+import { verifyToken, AuthRequest, requirePermission, getTenantFilter, notifyRole, notifySuperAdmins, createAuditLog } from "./auth-utils.js";
 
 function requireAdmin(req: AuthRequest, res: express.Response, next: express.NextFunction) {
   const auth = req.headers.authorization;
@@ -587,6 +603,12 @@ function requireAdmin(req: AuthRequest, res: express.Response, next: express.Nex
   const token = auth.slice(7);
   try {
     const user = verifyToken(token);
+    if (user.disabled) {
+      return res.status(403).json({ error: "Account disabled" });
+    }
+    if (user.mustResetPassword) {
+      return res.status(403).json({ error: "Password reset required" });
+    }
     // Allow if super admin or has Admin/Manager/Sales roles
     const legacyRole = (user as Partial<{ role: string }>).role;
     const hasAdminAccess = user.isSuperAdmin ||
@@ -609,8 +631,12 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/categories", async (_req, res) => {
   try {
+    const tenantId = await getDefaultTenantId();
     const categories = await prisma.category.findMany({ orderBy: { name: "asc" } });
-    const products = await prisma.product.findMany({ select: { categoryId: true } });
+    const products = await prisma.product.findMany({
+      where: tenantId ? { tenantId } : undefined,
+      select: { categoryId: true },
+    });
     const productCounts = products.reduce<Record<string, number>>((acc, product) => {
       acc[product.categoryId] = (acc[product.categoryId] || 0) + 1;
       return acc;
@@ -633,10 +659,16 @@ app.get("/api/categories", async (_req, res) => {
 app.get("/api/products", async (req, res) => {
   try {
     const { category, q, sort } = req.query as { category?: string; q?: string; sort?: string };
+    const tenantId = await getDefaultTenantId();
     const categories = await prisma.category.findMany();
     const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
 
-    let result = await prisma.product.findMany({ where: { status: "active" } });
+    let result = await prisma.product.findMany({
+      where: {
+        status: "active",
+        ...(tenantId ? { tenantId } : {}),
+      },
+    });
     if (category) {
       result = result.filter((product) => categoryMap.get(product.categoryId) === category);
     }
@@ -679,8 +711,15 @@ app.get("/api/products", async (req, res) => {
 
 app.get("/api/products/:id", async (req, res) => {
   try {
-    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
-    if (!product || product.status !== "active") {
+    const tenantId = await getDefaultTenantId();
+    const product = await prisma.product.findFirst({
+      where: {
+        id: req.params.id,
+        status: "active",
+        ...(tenantId ? { tenantId } : {}),
+      },
+    });
+    if (!product) {
       return res.status(404).json({ error: "Not found" });
     }
     const category = await prisma.category.findUnique({ where: { id: product.categoryId } });
@@ -759,6 +798,7 @@ app.post("/api/payments/initiate", async (req, res) => {
   });
 
   try {
+    const tenantId = await getDefaultTenantId();
     const created = await prisma.payment.create({
       data: {
         provider: paymentMethod,
@@ -785,6 +825,7 @@ app.post("/api/payments/initiate", async (req, res) => {
       paymentStatus: "initialized",
       paymentReference: reference,
       cargoType,
+      tenantId: tenantId || undefined,
       items,
     });
 
@@ -1032,6 +1073,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
         });
         let orderId = nextPayment.orderId;
         if (!orderId) {
+          const tenantId = await getDefaultTenantId();
           const order = await createOrderRecord({
             customerName: payment.customerName,
             customerEmail: payment.customerEmail,
@@ -1041,6 +1083,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
             paymentStatus: "paid",
             paymentReference: payment.reference,
             cargoType: payment.cargoType || undefined,
+            tenantId: tenantId || undefined,
             items: parseOrderItems(payment.items),
           });
           await prisma.payment.update({ where: { id: payment.id }, data: { orderId: order.id } });
@@ -1126,6 +1169,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
     if (newStatus === "paid") {
       let orderId = updatedPayment.orderId;
       if (!orderId) {
+        const tenantId = await getDefaultTenantId();
         const order = await createOrderRecord({
           customerName: updatedPayment.customerName,
           customerEmail: updatedPayment.customerEmail,
@@ -1135,6 +1179,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
           paymentStatus: "paid",
           paymentReference: updatedPayment.reference,
           cargoType: updatedPayment.cargoType || undefined,
+          tenantId: tenantId || undefined,
           items: parseOrderItems(updatedPayment.items),
         });
         await prisma.payment.update({ where: { id: paymentId }, data: { orderId: order.id } });
@@ -1148,6 +1193,26 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
         });
       }
       return res.json({ success: true, id: paymentId, status: newStatus, orderId: orderId || null });
+    }
+
+    if (newStatus === "failed") {
+      const tenantId = await getDefaultTenantId();
+      await notifySuperAdmins({
+        type: "payment_failed",
+        title: "Payment Failed",
+        message: `Payment ${paymentId} failed for ${updatedPayment.customerName}.`,
+        data: { paymentId },
+      });
+      if (tenantId) {
+        await notifyRole({
+          roleName: "Manager",
+          tenantId,
+          type: "payment_failed",
+          title: "Payment Failed",
+          message: `Payment ${paymentId} failed for ${updatedPayment.customerName}.`,
+          data: { paymentId },
+        });
+      }
     }
 
     res.json({ success: true, id: paymentId, status: newStatus, orderId: updatedPayment.orderId });
@@ -1191,6 +1256,7 @@ app.post("/api/orders", async (req, res) => {
 
   try {
     const paymentStatus = "pending";
+    const tenantId = await getDefaultTenantId();
     const order = await createOrderRecord({
       customerName,
       customerEmail,
@@ -1200,8 +1266,25 @@ app.post("/api/orders", async (req, res) => {
       paymentStatus,
       paymentReference,
       cargoType,
+      tenantId: tenantId || undefined,
       items,
     });
+    await notifySuperAdmins({
+      type: "new_order",
+      title: "New Order",
+      message: `New order ${order.id} placed by ${customerName}.`,
+      data: { orderId: order.id },
+    });
+    if (tenantId) {
+      await notifyRole({
+        roleName: "Manager",
+        tenantId,
+        type: "new_order",
+        title: "New Order",
+        message: `New order ${order.id} placed by ${customerName}.`,
+        data: { orderId: order.id },
+      });
+    }
     res.status(201).json(order);
   } catch (e) {
     console.error("Create order error", e);
@@ -1241,6 +1324,8 @@ app.get("/api/orders/track", async (req, res) => {
   }
 
   try {
+    const tenantId = await getDefaultTenantId();
+    const tenantWhere = tenantId ? { tenantId } : {};
     const includePayload = {
       items: true,
       trackingEvents: { orderBy: { eventAt: "asc" as const } },
@@ -1249,16 +1334,17 @@ app.get("/api/orders/track", async (req, res) => {
       ? await prisma.order.findFirst({
         where: {
           OR: [{ id: orderTrackingId }, { trackingNumber: orderTrackingId }],
+          ...tenantWhere,
         },
         include: includePayload,
       })
       : orderId
-        ? await prisma.order.findUnique({
-          where: { id: orderId },
+        ? await prisma.order.findFirst({
+          where: { id: orderId, ...tenantWhere },
           include: includePayload,
         })
         : await prisma.order.findFirst({
-          where: { trackingNumber: trackingNumber || undefined },
+          where: { trackingNumber: trackingNumber || undefined, ...tenantWhere },
           include: includePayload,
         });
 
@@ -1302,22 +1388,25 @@ app.get("/api/orders/track", async (req, res) => {
 
 // Legacy auth routes removed (replaced by /api/auth)
 
-app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
+app.get("/api/admin/analytics", requireAdmin, requirePermission("analytics", "view"), async (req, res) => {
   try {
-    const allOrders = await prisma.order.findMany();
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const orderWhere = tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {};
+    const productWhere = tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {};
+    const allOrders = await prisma.order.findMany({ where: orderWhere });
     const totalRevenue = allOrders.reduce((sum, order) => sum + order.total, 0);
     const totalOrders = allOrders.length;
-    const totalProducts = await prisma.product.count();
+    const totalProducts = await prisma.product.count({ where: productWhere });
     const uniqueEmails = new Set(allOrders.map((o) => o.customerEmail));
     const totalCustomers = uniqueEmails.size;
 
     const ordersByStatus = (
       await Promise.all([
-        { status: "pending", count: await prisma.order.count({ where: { status: "pending" } }) },
-        { status: "processing", count: await prisma.order.count({ where: { status: "processing" } }) },
-        { status: "shipped", count: await prisma.order.count({ where: { status: "shipped" } }) },
-        { status: "delivered", count: await prisma.order.count({ where: { status: "delivered" } }) },
-        { status: "cancelled", count: await prisma.order.count({ where: { status: "cancelled" } }) },
+        { status: "pending", count: await prisma.order.count({ where: { ...orderWhere, status: "pending" } }) },
+        { status: "processing", count: await prisma.order.count({ where: { ...orderWhere, status: "processing" } }) },
+        { status: "shipped", count: await prisma.order.count({ where: { ...orderWhere, status: "shipped" } }) },
+        { status: "delivered", count: await prisma.order.count({ where: { ...orderWhere, status: "delivered" } }) },
+        { status: "cancelled", count: await prisma.order.count({ where: { ...orderWhere, status: "cancelled" } }) },
       ])
     ).map((item) => ({ status: item.status, count: item.count }));
 
@@ -1331,14 +1420,16 @@ app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
       return { month, revenue };
     });
 
-    const topProducts = (await prisma.product.findMany({ take: 5 })).map((product, index) => ({
+    const topProducts = (await prisma.product.findMany({ where: productWhere, take: 5 })).map((product, index) => ({
       name: product.name,
       sales: Math.max(10, product.reviewCount || 10 + index * 5),
     }));
 
     const allCategories = await prisma.category.findMany();
     const categoryRevenue = new Map<string, number>();
-    const orderItems = await prisma.orderItem.findMany();
+    const orderItems = await prisma.orderItem.findMany({
+      where: tenantFilter.tenantId ? { order: { tenantId: tenantFilter.tenantId } } : undefined,
+    });
 
     for (const item of orderItems) {
       if (!item.productId) continue;
@@ -1371,9 +1462,11 @@ app.get("/api/admin/analytics", requireAdmin, async (_req, res) => {
   }
 });
 
-app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
+app.get("/api/admin/orders", requireAdmin, requirePermission("orders", "view"), async (req, res) => {
   try {
+    const tenantFilter = getTenantFilter(req as AuthRequest);
     const orders = await prisma.order.findMany({
+      where: tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : undefined,
       include: { items: true, trackingEvents: { orderBy: { eventAt: "desc" } } },
       orderBy: { createdAt: "desc" },
     });
@@ -1450,9 +1543,15 @@ app.get("/api/admin/orders", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/admin/orders/:id/approve-payment", requireAdmin, async (req, res) => {
+app.post("/api/admin/orders/:id/approve-payment", requireAdmin, requirePermission("orders", "approve"), async (req, res) => {
   try {
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const order = await prisma.order.findFirst({
+      where: {
+        id: req.params.id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+    });
     if (!order) return res.status(404).json({ error: "Not found" });
     if (order.paymentMethod === "cod") {
       return res.status(400).json({ error: "COD orders do not require payment approval" });
@@ -1508,7 +1607,7 @@ app.post("/api/admin/orders/:id/approve-payment", requireAdmin, async (req, res)
   }
 });
 
-app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
+app.patch("/api/admin/orders/:id/status", requireAdmin, requirePermission("orders", "edit"), async (req, res) => {
   try {
     const schema = z.object({
       status: z.enum(ORDER_STATUSES),
@@ -1524,7 +1623,14 @@ app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Invalid status" });
     }
     const { id } = req.params;
-    const order = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const order = await prisma.order.findFirst({
+      where: {
+        id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+      include: { items: true },
+    });
     if (!order) {
       return res.status(404).json({ error: "Not found" });
     }
@@ -1607,6 +1713,25 @@ app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
       });
     }
 
+    if (updated.status === "cancelled") {
+      await notifySuperAdmins({
+        type: "order_cancellation",
+        title: "Order Cancelled",
+        message: `Order ${order.id} was cancelled.`,
+        data: { orderId: order.id },
+      });
+      if (order.tenantId) {
+        await notifyRole({
+          roleName: "Manager",
+          tenantId: order.tenantId,
+          type: "order_cancellation",
+          title: "Order Cancelled",
+          message: `Order ${order.id} was cancelled.`,
+          data: { orderId: order.id },
+        });
+      }
+    }
+
     res.json({
       id,
       status: parsed.data.status,
@@ -1622,7 +1747,7 @@ app.patch("/api/admin/orders/:id/status", requireAdmin, async (req, res) => {
   }
 });
 
-app.patch("/api/admin/orders/:id/tracking", requireAdmin, async (req, res) => {
+app.patch("/api/admin/orders/:id/tracking", requireAdmin, requirePermission("orders", "edit"), async (req, res) => {
   try {
     const schema = z.object({
       trackingNumber: z.string().min(3).max(80).optional(),
@@ -1642,7 +1767,13 @@ app.patch("/api/admin/orders/:id/tracking", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "No tracking fields provided" });
     }
 
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const order = await prisma.order.findFirst({
+      where: {
+        id: req.params.id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+    });
     if (!order) return res.status(404).json({ error: "Not found" });
 
     const updateData: Prisma.OrderUpdateInput = {
@@ -1743,7 +1874,7 @@ app.post("/api/pending-products", async (req, res) => {
   }
 });
 
-app.get("/api/admin/pending-products", requireAdmin, async (_req, res) => {
+app.get("/api/admin/pending-products", requireAdmin, requirePermission("products", "view"), async (req, res) => {
   try {
     const pending = await prisma.pendingProduct.findMany({
       orderBy: { submittedAt: "desc" },
@@ -1755,7 +1886,7 @@ app.get("/api/admin/pending-products", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, res) => {
+app.post("/api/admin/pending-products/:id/approve", requireAdmin, requirePermission("products", "approve"), async (req, res) => {
   try {
     const pending = await prisma.pendingProduct.findUnique({
       where: { id: req.params.id },
@@ -1765,6 +1896,8 @@ app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, re
     }
 
     const category = await ensureCategory(pending.category);
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const tenantId = tenantFilter.tenantId ?? (await getDefaultTenantId());
     await prisma.product.create({
       data: {
         name: pending.name,
@@ -1784,6 +1917,7 @@ app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, re
         lastRestocked: new Date(),
         sellerName: pending.sellerName,
         sellerEmail: pending.sellerEmail,
+        tenantId: tenantId || undefined,
         country: "UAE",
         status: "active",
         createdAt: new Date(),
@@ -1809,7 +1943,7 @@ app.post("/api/admin/pending-products/:id/approve", requireAdmin, async (req, re
   }
 });
 
-app.post("/api/admin/pending-products/:id/reject", requireAdmin, async (req, res) => {
+app.post("/api/admin/pending-products/:id/reject", requireAdmin, requirePermission("products", "approve"), async (req, res) => {
   try {
     const pending = await prisma.pendingProduct.findUnique({
       where: { id: req.params.id },
@@ -1830,9 +1964,11 @@ app.post("/api/admin/pending-products/:id/reject", requireAdmin, async (req, res
   }
 });
 
-app.get("/api/admin/products", requireAdmin, async (_req, res) => {
+app.get("/api/admin/products", requireAdmin, requirePermission("products", "view"), async (req, res) => {
   try {
+    const tenantFilter = getTenantFilter(req as AuthRequest);
     const products = await prisma.product.findMany({
+      where: tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : undefined,
       include: { category: true },
       orderBy: { createdAt: "desc" },
     });
@@ -1855,7 +1991,7 @@ app.get("/api/admin/products", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/admin/products", requireAdmin, async (req, res) => {
+app.post("/api/admin/products", requireAdmin, requirePermission("products", "create"), async (req, res) => {
   const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
     message: "Image must be a URL or data URI",
   });
@@ -1881,6 +2017,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
       sellerEmail: z.string().email().optional().nullable(),
       country: z.string().optional(),
       status: z.enum(["active", "inactive"]).optional(),
+      tenantId: z.string().optional(),
     })
     .superRefine((data, ctx) => {
       if (!data.images?.length && !data.image) {
@@ -1894,11 +2031,13 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
   }
 
   try {
+    const tenantFilter = getTenantFilter(req as AuthRequest);
     const category = await ensureCategory(parsed.data.category);
     const createdAt = new Date();
     const stock = parsed.data.stock ?? 0;
     const images = parsed.data.images ?? (parsed.data.image ? [parsed.data.image] : []);
     const sku = parsed.data.sku ?? `IMK-${Math.floor(Math.random() * 9000 + 1000)}`;
+    const tenantId = tenantFilter.tenantId ?? parsed.data.tenantId;
     const product = await prisma.product.create({
       data: {
         name: parsed.data.name,
@@ -1919,6 +2058,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
         lastRestocked: createdAt,
         sellerName: parsed.data.sellerName ?? undefined,
         sellerEmail: parsed.data.sellerEmail ?? undefined,
+        tenantId: tenantId || undefined,
         country: parsed.data.country ?? undefined,
         status: parsed.data.status ?? "active",
         createdAt,
@@ -1931,7 +2071,7 @@ app.post("/api/admin/products", requireAdmin, async (req, res) => {
   }
 });
 
-app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
+app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products", "edit"), async (req, res) => {
   const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
     message: "Image must be a URL or data URI",
   });
@@ -1962,7 +2102,13 @@ app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid payload" });
   }
   try {
-    const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const existing = await prisma.product.findFirst({
+      where: {
+        id: req.params.id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+    });
     if (!existing) return res.status(404).json({ error: "Not found" });
     const { category, images, image, ...rest } = parsed.data;
     const updateData: Prisma.ProductUncheckedUpdateInput = { ...rest };
@@ -1990,9 +2136,30 @@ app.patch("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
+app.delete("/api/admin/products/:id", requireAdmin, requirePermission("products", "delete"), async (req, res) => {
   try {
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const existing = await prisma.product.findFirst({
+      where: {
+        id: req.params.id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
     await prisma.product.delete({ where: { id: req.params.id } });
+
+    await createAuditLog({
+      userId: (req as AuthRequest).user!.userId,
+      tenantId: (req as AuthRequest).user!.tenantId,
+      action: "delete",
+      resource: "product",
+      resourceId: req.params.id,
+      changes: { name: existing.name },
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
     res.json({ id: req.params.id });
   } catch (e) {
     console.error("Delete product error", e);
@@ -2000,9 +2167,13 @@ app.delete("/api/admin/products/:id", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
+app.get("/api/admin/inventory", requireAdmin, requirePermission("products", "view"), async (req, res) => {
   try {
-    const products = await prisma.product.findMany({ include: { category: true } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const products = await prisma.product.findMany({
+      where: tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : undefined,
+      include: { category: true },
+    });
     res.json(
       products.map((product) => ({
         id: product.id,
@@ -2021,14 +2192,25 @@ app.get("/api/admin/inventory", requireAdmin, async (_req, res) => {
   }
 });
 
-app.patch("/api/admin/inventory/:id", requireAdmin, async (req, res) => {
+app.patch("/api/admin/inventory/:id", requireAdmin, requirePermission("products", "edit"), async (req, res) => {
   const schema = z.object({ stock: z.number().int().min(0) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
   }
   try {
-    const updated = await prisma.product.update({ where: { id: req.params.id }, data: { stock: parsed.data.stock, inStock: parsed.data.stock > 0, lastRestocked: new Date() } });
+    const tenantFilter = getTenantFilter(req as AuthRequest);
+    const existing = await prisma.product.findFirst({
+      where: {
+        id: req.params.id,
+        ...(tenantFilter.tenantId ? { tenantId: tenantFilter.tenantId } : {}),
+      },
+    });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const updated = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { stock: parsed.data.stock, inStock: parsed.data.stock > 0, lastRestocked: new Date() },
+    });
     res.json({ id: updated.id, stock: updated.stock });
   } catch (e) {
     console.error("Update inventory error", e);
@@ -2036,7 +2218,7 @@ app.patch("/api/admin/inventory/:id", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/admin/categories", requireAdmin, async (_req, res) => {
+app.get("/api/admin/categories", requireAdmin, requirePermission("products", "view"), async (_req, res) => {
   try {
     const categories = await prisma.category.findMany({ orderBy: { name: "asc" } });
     res.json(categories);
@@ -2046,7 +2228,7 @@ app.get("/api/admin/categories", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/admin/categories", requireAdmin, async (req, res) => {
+app.post("/api/admin/categories", requireAdmin, requirePermission("products", "create"), async (req, res) => {
   const schema = z.object({ name: z.string().min(1), image: z.string().url().optional() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -2065,7 +2247,7 @@ app.post("/api/admin/categories", requireAdmin, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/categories/:id", requireAdmin, async (req, res) => {
+app.delete("/api/admin/categories/:id", requireAdmin, requirePermission("products", "delete"), async (req, res) => {
   try {
     const toRemove = await prisma.category.findUnique({ where: { id: req.params.id } });
     if (!toRemove) return res.status(404).json({ error: "Not found" });
@@ -2079,7 +2261,7 @@ app.delete("/api/admin/categories/:id", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/admin/email-history", requireAdmin, async (_req, res) => {
+app.get("/api/admin/email-history", requireAdmin, requirePermission("marketing", "view"), async (_req, res) => {
   try {
     const history = await prisma.emailHistory.findMany({ orderBy: { createdAt: "desc" } });
     res.json(history);
@@ -2089,7 +2271,7 @@ app.get("/api/admin/email-history", requireAdmin, async (_req, res) => {
   }
 });
 
-app.post("/api/admin/email/send-test", requireAdmin, async (req, res) => {
+app.post("/api/admin/email/send-test", requireAdmin, requirePermission("marketing", "edit"), async (req, res) => {
   const schema = z.object({ to: z.string().email().optional() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -2113,7 +2295,7 @@ app.post("/api/admin/email/send-test", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/api/admin/email/low-stock-alerts", requireAdmin, async (_req, res) => {
+app.post("/api/admin/email/low-stock-alerts", requireAdmin, requirePermission("notifications", "create"), async (_req, res) => {
   try {
     const products = await prisma.product.findMany();
     const filtered = products.filter((p) => p.stock <= p.lowStockThreshold);

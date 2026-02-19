@@ -22,10 +22,14 @@ export default function EnhancedLogin() {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const success = await loginSuperAdmin(superAdminData.email, superAdminData.password);
-            if (success) {
+            const result = await loginSuperAdmin(superAdminData.email, superAdminData.password);
+            if (result.success) {
                 toast.success("Welcome, Super Admin!");
-                navigate("/super-admin");
+                if (result.mustReset) {
+                    navigate("/reset-password");
+                } else {
+                    navigate("/super-admin");
+                }
             } else {
                 toast.error("Invalid credentials");
             }
@@ -42,12 +46,16 @@ export default function EnhancedLogin() {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const success = await login(adminData.email, adminData.password);
-            if (success) {
+            const result = await login(adminData.email, adminData.password);
+            if (result.success) {
                 toast.success("Welcome back!");
-                const state = location.state as { from?: { pathname?: string } } | null;
-                const from = state?.from?.pathname || "/admin";
-                navigate(from);
+                if (result.mustReset) {
+                    navigate("/reset-password");
+                } else {
+                    const state = location.state as { from?: { pathname?: string } } | null;
+                    const from = state?.from?.pathname || "/admin";
+                    navigate(from);
+                }
             } else {
                 toast.error("Invalid credentials");
             }
@@ -64,10 +72,14 @@ export default function EnhancedLogin() {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const success = await loginSeller(sellerData.email, sellerData.password);
-            if (success) {
+            const result = await loginSeller(sellerData.email, sellerData.password);
+            if (result.success) {
                 toast.success("Welcome back, Seller!");
-                navigate("/seller");
+                if (result.mustReset) {
+                    navigate("/reset-password");
+                } else {
+                    navigate("/seller");
+                }
             } else {
                 toast.error("Invalid credentials");
             }
@@ -94,10 +106,14 @@ export default function EnhancedLogin() {
         e.preventDefault();
         setIsLoading(true);
         try {
-            const success = await loginCustomer(customerData.phone, customerData.password);
-            if (success) {
+            const result = await loginCustomer(customerData.phone, customerData.password);
+            if (result.success) {
                 toast.success("Welcome back!");
-                navigate("/");
+                if (result.mustReset) {
+                    navigate("/reset-password");
+                } else {
+                    navigate("/");
+                }
             } else {
                 toast.error("Invalid credentials");
             }

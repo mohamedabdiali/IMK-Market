@@ -149,6 +149,12 @@ const actions = ["view", "create", "edit", "delete", "approve", "export"];
 // ============================================
 
 async function main() {
+  const createTempPassword = () =>
+    crypto
+      .randomBytes(12)
+      .toString("base64")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 16);
   console.log("🌱 Seeding database with multi-tenant architecture...\n");
 
   // ============================================
@@ -186,9 +192,12 @@ async function main() {
     update: {},
     create: {
       email: "admin@primmesisc.com",
+      username: "superadmin",
       passwordHash: superAdminHash,
       name: "Super System Admin",
       isSuperAdmin: true,
+      mustResetPassword: true,
+      passwordUpdatedAt: new Date(),
     },
   });
   console.log(`✅ Super Admin created: admin@primmesisc.com`);
@@ -276,16 +285,28 @@ async function main() {
       subscriptionType: "E-commerce Business",
       subscriptionStatus: "active",
       modulesEnabled: JSON.stringify([
-        "products",
-        "orders",
-        "customers",
-        "sellers",
-        "analytics",
-        "marketing",
+        "Client Management",
+        "Product Management",
+        "Order Management",
+        "Marketing Tools",
+        "Analytics Dashboard",
+        "Seller Management",
       ]),
     },
   });
   console.log(`✅ Created tenant: IMK-Market\n`);
+
+  await prisma.subscription.upsert({
+    where: { tenantId: imkTenant.id },
+    update: {},
+    create: {
+      tenantId: imkTenant.id,
+      planName: "E-commerce Business",
+      status: "active",
+      billingCycle: "monthly",
+      currency: "USD",
+    },
+  });
 
   // ============================================
   // 5. CREATE TENANT-SPECIFIC ROLES
@@ -364,8 +385,8 @@ async function main() {
   // ============================================
   console.log("👥 Creating IMK-Market team accounts...");
 
-  const managerPassword = "Manager@123";
-  const salesPassword = "Sales@123";
+  const managerPassword = createTempPassword();
+  const salesPassword = createTempPassword();
 
   const manager = await prisma.user.upsert({
     where: { email: "manager@imk-market.com" },
@@ -375,6 +396,8 @@ async function main() {
       passwordHash: bcrypt.hashSync(managerPassword, 10),
       name: "IMK Manager",
       tenantId: imkTenant.id,
+      mustResetPassword: true,
+      passwordUpdatedAt: new Date(),
     },
   });
 
@@ -401,6 +424,8 @@ async function main() {
       passwordHash: bcrypt.hashSync(salesPassword, 10),
       name: "Sales Associate",
       tenantId: imkTenant.id,
+      mustResetPassword: true,
+      passwordUpdatedAt: new Date(),
     },
   });
 
@@ -426,7 +451,7 @@ async function main() {
   // 7. CREATE DEMO CUSTOMER
   // ============================================
   console.log("🛍️  Creating demo customer...");
-  const customerPassword = "Customer@123";
+  const customerPassword = createTempPassword();
   const demoCustomer = await prisma.user.upsert({
     where: { email: "customer@demo.com" },
     update: {},
@@ -435,6 +460,9 @@ async function main() {
       passwordHash: bcrypt.hashSync(customerPassword, 10),
       name: "Demo Customer",
       phone: "+971501234567",
+      tenantId: imkTenant.id,
+      mustResetPassword: true,
+      passwordUpdatedAt: new Date(),
     },
   });
 
@@ -449,6 +477,7 @@ async function main() {
     create: {
       userId: demoCustomer.id,
       roleId: customerRole.id,
+      tenantId: imkTenant.id,
     },
   });
 
@@ -458,7 +487,7 @@ async function main() {
   // 8. CREATE DEMO SELLER
   // ============================================
   console.log("🏪 Creating demo seller...");
-  const sellerPassword = "Seller@123";
+  const sellerPassword = createTempPassword();
   const demoSeller = await prisma.user.upsert({
     where: { email: "seller@demo.com" },
     update: {},
@@ -467,6 +496,9 @@ async function main() {
       passwordHash: bcrypt.hashSync(sellerPassword, 10),
       name: "Demo Seller",
       phone: "+971509876543",
+      tenantId: imkTenant.id,
+      mustResetPassword: true,
+      passwordUpdatedAt: new Date(),
     },
   });
 
@@ -481,6 +513,7 @@ async function main() {
     create: {
       userId: demoSeller.id,
       roleId: sellerRole.id,
+      tenantId: imkTenant.id,
     },
   });
 
@@ -502,6 +535,15 @@ async function main() {
   });
 
   console.log(`✅ Demo Seller: seller@demo.com / ${sellerPassword}\n`);
+
+  await prisma.sellerStatus.create({
+    data: {
+      sellerId: sellerProfile.id,
+      status: "active",
+      note: "Seeded demo seller",
+      changedBy: superAdmin.id,
+    },
+  });
 
   // ============================================
   // 9. CREATE CATEGORIES

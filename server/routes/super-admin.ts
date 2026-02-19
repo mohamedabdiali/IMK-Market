@@ -8,7 +8,8 @@ import {
     requireSuperAdmin,
     AuthRequest,
     createAuditLog,
-    createNotification
+    createNotification,
+    notifyRole
 } from "../auth-utils.js";
 
 const router = Router();
@@ -109,6 +110,16 @@ router.post("/tenants", async (req: AuthRequest, res) => {
             },
         });
 
+        await prisma.subscription.create({
+            data: {
+                tenantId: tenant.id,
+                planName: parsed.data.subscriptionType,
+                status: "active",
+                billingCycle: "monthly",
+                currency: "USD",
+            },
+        });
+
         await createAuditLog({
             userId: req.user!.userId,
             action: "create",
@@ -153,6 +164,16 @@ router.patch("/tenants/:id", async (req: AuthRequest, res) => {
             },
         });
 
+        if (parsed.data.subscriptionStatus || parsed.data.subscriptionType) {
+            await prisma.subscription.updateMany({
+                where: { tenantId: tenant.id },
+                data: {
+                    status: parsed.data.subscriptionStatus,
+                    planName: parsed.data.subscriptionType,
+                },
+            });
+        }
+
         await createAuditLog({
             userId: req.user!.userId,
             action: "update",
@@ -167,6 +188,145 @@ router.patch("/tenants/:id", async (req: AuthRequest, res) => {
     } catch (error) {
         console.error("Update tenant error:", error);
         res.status(500).json({ error: "Failed to update tenant" });
+    }
+});
+
+// ============================================
+// SUBSCRIPTIONS
+// ============================================
+
+router.get("/subscriptions", async (_req: AuthRequest, res) => {
+    try {
+        const subs = await prisma.subscription.findMany({
+            include: { tenant: true },
+            orderBy: { createdAt: "desc" },
+        });
+        res.json(subs);
+    } catch (error) {
+        console.error("Get subscriptions error:", error);
+        res.status(500).json({ error: "Failed to fetch subscriptions" });
+    }
+});
+
+router.post("/subscriptions", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            tenantId: z.string(),
+            planName: z.string().min(2),
+            status: z.enum(["active", "suspended", "cancelled"]).default("active"),
+            billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
+            price: z.number().optional(),
+            currency: z.string().optional(),
+            endsAt: z.string().datetime().optional(),
+            metadata: z.record(z.any()).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+        }
+
+        const subscription = await prisma.subscription.create({
+            data: {
+                tenantId: parsed.data.tenantId,
+                planName: parsed.data.planName,
+                status: parsed.data.status,
+                billingCycle: parsed.data.billingCycle,
+                price: parsed.data.price,
+                currency: parsed.data.currency ?? "USD",
+                endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : undefined,
+                metadata: parsed.data.metadata ?? undefined,
+            },
+        });
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            action: "create",
+            resource: "subscription",
+            resourceId: subscription.id,
+            changes: parsed.data,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.status(201).json(subscription);
+    } catch (error) {
+        console.error("Create subscription error:", error);
+        res.status(500).json({ error: "Failed to create subscription" });
+    }
+});
+
+router.patch("/subscriptions/:id", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            planName: z.string().min(2).optional(),
+            status: z.enum(["active", "suspended", "cancelled"]).optional(),
+            billingCycle: z.enum(["monthly", "yearly"]).optional(),
+            price: z.number().optional(),
+            currency: z.string().optional(),
+            endsAt: z.string().datetime().optional(),
+            metadata: z.record(z.any()).optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+        }
+
+        const subscription = await prisma.subscription.update({
+            where: { id: req.params.id },
+            data: {
+                planName: parsed.data.planName,
+                status: parsed.data.status,
+                billingCycle: parsed.data.billingCycle,
+                price: parsed.data.price,
+                currency: parsed.data.currency,
+                endsAt: parsed.data.endsAt ? new Date(parsed.data.endsAt) : undefined,
+                metadata: parsed.data.metadata ?? undefined,
+            },
+        });
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            action: "update",
+            resource: "subscription",
+            resourceId: subscription.id,
+            changes: parsed.data,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json(subscription);
+    } catch (error) {
+        console.error("Update subscription error:", error);
+        res.status(500).json({ error: "Failed to update subscription" });
+    }
+});
+
+// ============================================
+// TENANT ANALYTICS
+// ============================================
+
+router.get("/tenants/:id/analytics", async (req: AuthRequest, res) => {
+    try {
+        const tenantId = req.params.id;
+        const [totalUsers, totalSellers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
+            prisma.user.count({ where: { tenantId } }),
+            prisma.sellerProfile.count({ where: { user: { tenantId } } }),
+            prisma.product.count({ where: { tenantId } }),
+            prisma.order.count({ where: { tenantId } }),
+            prisma.order.aggregate({ where: { tenantId }, _sum: { total: true } }),
+        ]);
+
+        res.json({
+            tenantId,
+            totalUsers,
+            totalSellers,
+            totalProducts,
+            totalOrders,
+            totalRevenue: totalRevenue._sum.total || 0,
+        });
+    } catch (error) {
+        console.error("Tenant analytics error:", error);
+        res.status(500).json({ error: "Failed to fetch tenant analytics" });
     }
 });
 
@@ -201,6 +361,7 @@ router.post("/users", async (req: AuthRequest, res) => {
         const schema = z.object({
             email: z.string().email(),
             password: z.string().min(8),
+            username: z.string().min(3).optional(),
             name: z.string().optional(),
             phone: z.string().optional(),
             tenantId: z.string().optional(),
@@ -220,10 +381,13 @@ router.post("/users", async (req: AuthRequest, res) => {
         const user = await prisma.user.create({
             data: {
                 email: parsed.data.email,
+                username: parsed.data.username,
                 passwordHash,
                 name: parsed.data.name,
                 phone: parsed.data.phone,
                 tenantId: parsed.data.tenantId,
+                mustResetPassword: true,
+                passwordUpdatedAt: new Date(),
             },
         });
 
@@ -290,9 +454,69 @@ router.delete("/users/:id", async (req: AuthRequest, res) => {
     }
 });
 
+router.patch("/users/:id/roles", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            roleIds: z.array(z.string()).min(1),
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Invalid data",
+                details: parsed.error.flatten(),
+            });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: req.params.id },
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        await prisma.userRole.deleteMany({ where: { userId: user.id } });
+
+        await prisma.userRole.createMany({
+            data: parsed.data.roleIds.map((roleId) => ({
+                userId: user.id,
+                roleId,
+                tenantId: user.tenantId || undefined,
+            })),
+        });
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            tenantId: user.tenantId || undefined,
+            action: "update",
+            resource: "user_roles",
+            resourceId: user.id,
+            changes: { roleIds: parsed.data.roleIds },
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Update user roles error:", error);
+        res.status(500).json({ error: "Failed to update user roles" });
+    }
+});
+
 // ============================================
 // ROLE MANAGEMENT (Global)
 // ============================================
+
+router.get("/permissions", async (_req: AuthRequest, res) => {
+    try {
+        const permissions = await prisma.permission.findMany({ orderBy: [{ resource: "asc" }, { action: "asc" }] });
+        res.json(permissions);
+    } catch (error) {
+        console.error("Get permissions error:", error);
+        res.status(500).json({ error: "Failed to fetch permissions" });
+    }
+});
 
 router.get("/roles", async (req: AuthRequest, res) => {
     try {
@@ -369,6 +593,66 @@ router.post("/roles", async (req: AuthRequest, res) => {
     } catch (error) {
         console.error("Create role error:", error);
         res.status(500).json({ error: "Failed to create role" });
+    }
+});
+
+router.patch("/roles/:id", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            name: z.string().min(2).optional(),
+            description: z.string().optional(),
+            permissionIds: z.array(z.string()).optional(),
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: "Invalid data",
+                details: parsed.error.flatten(),
+            });
+        }
+
+        const role = await prisma.role.findUnique({ where: { id: req.params.id } });
+        if (!role) {
+            return res.status(404).json({ error: "Role not found" });
+        }
+
+        if (role.isSystemRole && parsed.data.name && parsed.data.name !== role.name) {
+            return res.status(403).json({ error: "Cannot rename system role" });
+        }
+
+        const updatedRole = await prisma.role.update({
+            where: { id: role.id },
+            data: {
+                name: parsed.data.name ?? undefined,
+                description: parsed.data.description ?? undefined,
+            },
+        });
+
+        if (parsed.data.permissionIds) {
+            await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
+            await prisma.rolePermission.createMany({
+                data: parsed.data.permissionIds.map((permissionId) => ({
+                    roleId: role.id,
+                    permissionId,
+                })),
+            });
+        }
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            action: "update",
+            resource: "role",
+            resourceId: role.id,
+            changes: parsed.data,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json(updatedRole);
+    } catch (error) {
+        console.error("Update role error:", error);
+        res.status(500).json({ error: "Failed to update role" });
     }
 });
 
@@ -456,6 +740,15 @@ router.post("/sellers/:id/approve", async (req: AuthRequest, res) => {
             },
         });
 
+        await prisma.sellerStatus.create({
+            data: {
+                sellerId: sellerProfile.id,
+                status: "active",
+                note: "Approved by super admin",
+                changedBy: req.user!.userId,
+            },
+        });
+
         // Notify seller
         await createNotification({
             userId: sellerProfile.userId,
@@ -463,6 +756,17 @@ router.post("/sellers/:id/approve", async (req: AuthRequest, res) => {
             title: "Seller Account Approved",
             message: "Congratulations! Your seller account has been approved. You can now start listing products.",
         });
+
+        if (sellerProfile.user?.tenantId) {
+            await notifyRole({
+                roleName: "Manager",
+                tenantId: sellerProfile.user.tenantId,
+                type: "seller_approved",
+                title: "Seller Approved",
+                message: `${sellerProfile.businessName} has been approved.`,
+                data: { sellerId: sellerProfile.id },
+            });
+        }
 
         await createAuditLog({
             userId: req.user!.userId,
@@ -508,6 +812,16 @@ router.post("/sellers/:id/reject", async (req: AuthRequest, res) => {
             data: {
                 status: "rejected",
                 rejectionReason: parsed.data.reason,
+                approvedBy: req.user!.userId,
+            },
+        });
+
+        await prisma.sellerStatus.create({
+            data: {
+                sellerId: sellerProfile.id,
+                status: "rejected",
+                note: parsed.data.reason,
+                changedBy: req.user!.userId,
             },
         });
 
@@ -518,6 +832,17 @@ router.post("/sellers/:id/reject", async (req: AuthRequest, res) => {
             title: "Seller Account Rejected",
             message: `Your seller account application has been rejected. Reason: ${parsed.data.reason}`,
         });
+
+        if (sellerProfile.user?.tenantId) {
+            await notifyRole({
+                roleName: "Manager",
+                tenantId: sellerProfile.user.tenantId,
+                type: "seller_rejected",
+                title: "Seller Rejected",
+                message: `${sellerProfile.businessName} was rejected.`,
+                data: { sellerId: sellerProfile.id },
+            });
+        }
 
         await createAuditLog({
             userId: req.user!.userId,
@@ -533,6 +858,113 @@ router.post("/sellers/:id/reject", async (req: AuthRequest, res) => {
     } catch (error) {
         console.error("Reject seller error:", error);
         res.status(500).json({ error: "Failed to reject seller" });
+    }
+});
+
+// ============================================
+// SYSTEM SETTINGS & FEATURE TOGGLES
+// ============================================
+
+router.get("/system/settings", async (_req: AuthRequest, res) => {
+    try {
+        const settings = await prisma.systemSetting.findMany({ orderBy: { key: "asc" } });
+        res.json(settings);
+    } catch (error) {
+        console.error("Get system settings error:", error);
+        res.status(500).json({ error: "Failed to fetch system settings" });
+    }
+});
+
+router.put("/system/settings/:key", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            value: z.any(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+        }
+
+        const setting = await prisma.systemSetting.upsert({
+            where: { key: req.params.key },
+            update: {
+                value: parsed.data.value,
+                updatedBy: req.user!.userId,
+            },
+            create: {
+                key: req.params.key,
+                value: parsed.data.value,
+                updatedBy: req.user!.userId,
+            },
+        });
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            action: "update",
+            resource: "system_setting",
+            resourceId: setting.id,
+            changes: { key: setting.key },
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json(setting);
+    } catch (error) {
+        console.error("Update system setting error:", error);
+        res.status(500).json({ error: "Failed to update system setting" });
+    }
+});
+
+router.get("/feature-toggles", async (_req: AuthRequest, res) => {
+    try {
+        const toggles = await prisma.featureToggle.findMany({ orderBy: { key: "asc" } });
+        res.json(toggles);
+    } catch (error) {
+        console.error("Get feature toggles error:", error);
+        res.status(500).json({ error: "Failed to fetch feature toggles" });
+    }
+});
+
+router.patch("/feature-toggles/:key", async (req: AuthRequest, res) => {
+    try {
+        const schema = z.object({
+            enabled: z.boolean(),
+            description: z.string().optional(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid data", details: parsed.error.flatten() });
+        }
+
+        const toggle = await prisma.featureToggle.upsert({
+            where: { key: req.params.key },
+            update: {
+                enabled: parsed.data.enabled,
+                description: parsed.data.description,
+                updatedBy: req.user!.userId,
+            },
+            create: {
+                key: req.params.key,
+                enabled: parsed.data.enabled,
+                description: parsed.data.description,
+                updatedBy: req.user!.userId,
+            },
+        });
+
+        await createAuditLog({
+            userId: req.user!.userId,
+            action: "update",
+            resource: "feature_toggle",
+            resourceId: toggle.id,
+            changes: parsed.data,
+            ipAddress: req.ip,
+            userAgent: req.headers["user-agent"],
+        });
+
+        res.json(toggle);
+    } catch (error) {
+        console.error("Update feature toggle error:", error);
+        res.status(500).json({ error: "Failed to update feature toggle" });
     }
 });
 

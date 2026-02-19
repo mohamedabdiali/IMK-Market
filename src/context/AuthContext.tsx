@@ -13,12 +13,15 @@ interface Permission {
 interface User {
   userId: string;
   email: string;
+  username?: string;
   name?: string;
   phone?: string;
   tenantId?: string;
   roles: string[];
   permissions: Permission[];
   isSuperAdmin: boolean;
+  mustResetPassword?: boolean;
+  disabled?: boolean;
   sellerProfile?: {
     id: string;
     businessName: string;
@@ -37,6 +40,7 @@ interface AuthResponse {
   sellerProfile?: User["sellerProfile"];
   message?: string;
   status?: string;
+  csrfToken?: string;
 }
 
 interface SellerRegistrationPayload {
@@ -76,10 +80,10 @@ interface ApiErrorData {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  loginSuperAdmin: (email: string, password: string) => Promise<boolean>;
-  loginSeller: (email: string, password: string) => Promise<boolean>;
-  loginCustomer: (phone: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
+  loginSuperAdmin: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
+  loginSeller: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
+  loginCustomer: (phone: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
   registerCustomer: (payload: { name?: string; email?: string; phone: string; password: string }) => Promise<boolean>;
   registerSeller: (payload: SellerRegistrationPayload) => Promise<{ success: boolean; message?: string; status?: string }>;
   loginAsTrackingCustomer: (orderId: string, trackingNumber: string) => void;
@@ -98,6 +102,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEY = "auth_user";
 const TOKEN_KEY = "auth_token";
+const CSRF_KEY = "csrf_token";
 
 // ============================================
 // STORAGE HELPERS
@@ -142,15 +147,24 @@ const getApiErrorData = (error: unknown): ApiErrorData | undefined => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
 
-  const applySession = (nextUser: User, nextToken: string | null) => {
+  const applySession = (nextUser: User, nextToken: string | null, nextCsrf?: string | null) => {
     setUser(nextUser);
     setToken(nextToken);
+    if (nextCsrf !== undefined) {
+      setCsrfToken(nextCsrf);
+    }
     safeSetItem(STORAGE_KEY, JSON.stringify(nextUser));
     if (nextToken) {
       safeSetItem(TOKEN_KEY, nextToken);
     } else {
       safeRemoveItem(TOKEN_KEY);
+    }
+    if (nextCsrf) {
+      safeSetItem(CSRF_KEY, nextCsrf);
+    } else if (nextCsrf === null) {
+      safeRemoveItem(CSRF_KEY);
     }
   };
 
@@ -158,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const storedUser = safeGetItem(STORAGE_KEY);
     const storedToken = safeGetItem(TOKEN_KEY);
+    const storedCsrf = safeGetItem(CSRF_KEY);
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
@@ -168,13 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedToken) {
       setToken(storedToken);
     }
+    if (storedCsrf) {
+      setCsrfToken(storedCsrf);
+    }
   }, []);
 
   // ============================================
   // LOGIN METHODS
   // ============================================
 
-  const loginSuperAdmin = async (email: string, password: string): Promise<boolean> => {
+  const loginSuperAdmin = async (email: string, password: string): Promise<{ success: boolean; mustReset?: boolean }> => {
     try {
       const result = await api.post("/auth/super-admin/login", { email, password }) as AuthResponse;
       const newUser: User = {
@@ -182,15 +200,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "super-admin",
         role: "admin", // Legacy compatibility
       };
-      applySession(newUser, result.token);
-      return true;
+      applySession(newUser, result.token, result.csrfToken ?? null);
+      return { success: true, mustReset: Boolean(result.user.mustResetPassword) };
     } catch (error) {
       console.error("Super admin login failed:", error);
-      return false;
+      return { success: false };
     }
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; mustReset?: boolean }> => {
     try {
       const result = await api.post("/auth/admin/login", { email, password }) as AuthResponse;
       const newUser: User = {
@@ -198,15 +216,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "admin",
         role: "admin", // Legacy compatibility
       };
-      applySession(newUser, result.token);
-      return true;
+      applySession(newUser, result.token, result.csrfToken ?? null);
+      return { success: true, mustReset: Boolean(result.user.mustResetPassword) };
     } catch (error) {
       console.error("Admin login failed:", error);
-      return false;
+      return { success: false };
     }
   };
 
-  const loginSeller = async (email: string, password: string): Promise<boolean> => {
+  const loginSeller = async (email: string, password: string): Promise<{ success: boolean; mustReset?: boolean }> => {
     try {
       const result = await api.post("/auth/seller/login", { email, password }) as AuthResponse;
       const newUser: User = {
@@ -215,8 +233,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "seller",
         role: "user", // Legacy compatibility
       };
-      applySession(newUser, result.token);
-      return true;
+      applySession(newUser, result.token, result.csrfToken ?? null);
+      return { success: true, mustReset: Boolean(result.user.mustResetPassword) };
     } catch (error: unknown) {
       console.error("Seller login failed:", error);
       const errorData = getApiErrorData(error);
@@ -224,11 +242,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (errorData?.status) {
         throw error; // Re-throw to handle in UI
       }
-      return false;
+      return { success: false };
     }
   };
 
-  const loginCustomer = async (phone: string, password: string): Promise<boolean> => {
+  const loginCustomer = async (phone: string, password: string): Promise<{ success: boolean; mustReset?: boolean }> => {
     try {
       const result = await api.post("/auth/customer/login", { phone, password }) as AuthResponse;
       const newUser: User = {
@@ -236,11 +254,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "customer",
         role: "user", // Legacy compatibility
       };
-      applySession(newUser, result.token);
-      return true;
+      applySession(newUser, result.token, result.csrfToken ?? null);
+      return { success: true, mustReset: Boolean(result.user.mustResetPassword) };
     } catch (error) {
       console.error("Customer login failed:", error);
-      return false;
+      return { success: false };
     }
   };
 
@@ -261,7 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         source: "customer",
         role: "user", // Legacy compatibility
       };
-      applySession(newUser, result.token);
+      applySession(newUser, result.token, result.csrfToken ?? null);
       return true;
     } catch (error) {
       console.error("Customer registration failed:", error);
@@ -305,19 +323,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       trackingOrderId: normalizedOrderId,
       trackingNumber: normalizedTracking,
     };
-    applySession(trackingUser, null);
+    applySession(trackingUser, null, null);
   };
 
   const refreshToken = async (): Promise<boolean> => {
     if (!token) return false;
     try {
-      const result = await api.get(`/auth/refresh?token=${token}`) as AuthResponse;
+      const result = await api.post("/auth/refresh") as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: user?.source,
         role: user?.role,
       };
-      applySession(newUser, result.token);
+      applySession(newUser, result.token, result.csrfToken ?? null);
       return true;
     } catch (error) {
       console.error("Token refresh failed:", error);
@@ -327,10 +345,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    api.post("/auth/logout").catch(() => undefined);
     setUser(null);
     setToken(null);
+    setCsrfToken(null);
     safeRemoveItem(STORAGE_KEY);
     safeRemoveItem(TOKEN_KEY);
+    safeRemoveItem(CSRF_KEY);
   };
 
   // ============================================
