@@ -36,6 +36,12 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : process.env.NODE_ENV === "production"
     ? []
     : ["http://localhost:8080", "http://localhost:5173"];
+
+const vercelOrigin = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined;
+if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0 && vercelOrigin) {
+  allowedOrigins.push(vercelOrigin);
+}
+
 if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
   console.error("CRITICAL: Set ALLOWED_ORIGINS in production to restrict CORS.");
   process.exit(1);
