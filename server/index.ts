@@ -159,6 +159,8 @@ function createTrackingNumber() {
 
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = (typeof ORDER_STATUSES)[number];
+const PAYMENT_METHODS = ["cod", "orange_money", "afrimoney", "qmoney", "paystack", "stripe"] as const;
+type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 const TRACKING_EVENT_CONTENT: Record<OrderStatus, { title: string; message: string }> = {
   pending: {
@@ -199,6 +201,15 @@ const CARGO_ESTIMATE_DAYS: Record<string, number> = {
 
 function isOrderStatus(value: string): value is OrderStatus {
   return (ORDER_STATUSES as readonly string[]).includes(value);
+}
+
+function isPaymentMethod(value: string): value is PaymentMethod {
+  return (PAYMENT_METHODS as readonly string[]).includes(value);
+}
+
+function resolvePaymentMethod(value?: string | null): PaymentMethod {
+  if (value && isPaymentMethod(value)) return value;
+  return "cod";
 }
 
 function normalizeOptionalText(value?: string | null) {
@@ -425,7 +436,7 @@ async function createOrderRecord(payload: {
   customerEmail: string;
   customerPhone: string;
   shippingAddress: string;
-  paymentMethod: "cod" | "orange_money" | "afrimoney" | "qmoney" | "paystack" | "stripe";
+  paymentMethod: PaymentMethod;
   paymentStatus: "pending" | "initialized" | "paid" | "failed";
   paymentReference?: string;
   cargoType?: string;
@@ -560,9 +571,9 @@ async function ensureCategory(name: string) {
   return category;
 }
 
-import { verifyToken, AuthUser } from "./auth-utils.js";
+import { verifyToken, AuthRequest } from "./auth-utils.js";
 
-function requireAdmin(req: any, res: express.Response, next: express.NextFunction) {
+function requireAdmin(req: AuthRequest, res: express.Response, next: express.NextFunction) {
   const auth = req.headers.authorization;
   if (!auth?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -571,9 +582,10 @@ function requireAdmin(req: any, res: express.Response, next: express.NextFunctio
   try {
     const user = verifyToken(token);
     // Allow if super admin or has Admin/Manager/Sales roles
+    const legacyRole = (user as Partial<{ role: string }>).role;
     const hasAdminAccess = user.isSuperAdmin ||
       user.roles.some(role => ["Admin", "Manager", "Sales Associate"].includes(role)) ||
-      (user as any).role === "admin"; // Backward compatibility
+      legacyRole === "admin"; // Backward compatibility
 
     if (!hasAdminAccess) {
       return res.status(403).json({ error: "Forbidden" });
@@ -1019,7 +1031,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
             customerEmail: payment.customerEmail,
             customerPhone: payment.customerPhone,
             shippingAddress: payment.shippingAddress,
-            paymentMethod: payment.paymentMethod as any,
+            paymentMethod: resolvePaymentMethod(payment.paymentMethod),
             paymentStatus: "paid",
             paymentReference: payment.reference,
             cargoType: payment.cargoType || undefined,
@@ -1113,7 +1125,7 @@ app.post("/api/payments/webhook/:provider", async (req, res) => {
           customerEmail: updatedPayment.customerEmail,
           customerPhone: updatedPayment.customerPhone,
           shippingAddress: updatedPayment.shippingAddress,
-          paymentMethod: updatedPayment.paymentMethod as any,
+          paymentMethod: resolvePaymentMethod(updatedPayment.paymentMethod),
           paymentStatus: "paid",
           paymentReference: updatedPayment.reference,
           cargoType: updatedPayment.cargoType || undefined,

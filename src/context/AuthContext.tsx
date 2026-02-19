@@ -31,6 +31,48 @@ interface User {
   trackingNumber?: string;
 }
 
+interface AuthResponse {
+  token: string;
+  user: User;
+  sellerProfile?: User["sellerProfile"];
+  message?: string;
+  status?: string;
+}
+
+interface SellerRegistrationPayload {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+  businessName: string;
+  ownerName: string;
+  businessAddress: string;
+  productCategory: string;
+  description: string;
+  tradeLicense?: string;
+  emiratesId?: string;
+  bankDetails?: {
+    accountName: string;
+    accountNumber: string;
+    bankName: string;
+    iban?: string;
+    swiftCode?: string;
+  };
+}
+
+interface SellerRegistrationResponse {
+  message: string;
+  status: string;
+  userId: string;
+  sellerId: string;
+}
+
+interface ApiErrorData {
+  status?: string;
+  reason?: string;
+  error?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -39,7 +81,7 @@ interface AuthContextType {
   loginSeller: (email: string, password: string) => Promise<boolean>;
   loginCustomer: (phone: string, password: string) => Promise<boolean>;
   registerCustomer: (payload: { name?: string; email?: string; phone: string; password: string }) => Promise<boolean>;
-  registerSeller: (payload: any) => Promise<{ success: boolean; message?: string; status?: string }>;
+  registerSeller: (payload: SellerRegistrationPayload) => Promise<{ success: boolean; message?: string; status?: string }>;
   loginAsTrackingCustomer: (orderId: string, trackingNumber: string) => void;
   logout: () => void;
   refreshToken: () => Promise<boolean>;
@@ -85,6 +127,14 @@ const safeRemoveItem = (key: string) => {
   }
 };
 
+const getApiErrorData = (error: unknown): ApiErrorData | undefined => {
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return undefined;
+  }
+  const response = (error as { response?: { data?: ApiErrorData } }).response;
+  return response?.data;
+};
+
 // ============================================
 // AUTH PROVIDER
 // ============================================
@@ -126,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginSuperAdmin = async (email: string, password: string): Promise<boolean> => {
     try {
-      const result: any = await api.post("/auth/super-admin/login", { email, password });
+      const result = await api.post("/auth/super-admin/login", { email, password }) as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: "super-admin",
@@ -142,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const result: any = await api.post("/auth/admin/login", { email, password });
+      const result = await api.post("/auth/admin/login", { email, password }) as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: "admin",
@@ -158,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginSeller = async (email: string, password: string): Promise<boolean> => {
     try {
-      const result: any = await api.post("/auth/seller/login", { email, password });
+      const result = await api.post("/auth/seller/login", { email, password }) as AuthResponse;
       const newUser: User = {
         ...result.user,
         sellerProfile: result.sellerProfile,
@@ -167,10 +217,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       applySession(newUser, result.token);
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Seller login failed:", error);
+      const errorData = getApiErrorData(error);
       // Handle specific seller statuses
-      if (error.response?.data?.status) {
+      if (errorData?.status) {
         throw error; // Re-throw to handle in UI
       }
       return false;
@@ -179,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginCustomer = async (phone: string, password: string): Promise<boolean> => {
     try {
-      const result: any = await api.post("/auth/customer/login", { phone, password });
+      const result = await api.post("/auth/customer/login", { phone, password }) as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: "customer",
@@ -204,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string;
   }): Promise<boolean> => {
     try {
-      const result: any = await api.post("/auth/customer/register", payload);
+      const result = await api.post("/auth/customer/register", payload) as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: "customer",
@@ -218,19 +269,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const registerSeller = async (payload: any): Promise<{ success: boolean; message?: string; status?: string }> => {
+  const registerSeller = async (payload: SellerRegistrationPayload): Promise<{ success: boolean; message?: string; status?: string }> => {
     try {
-      const result: any = await api.post("/auth/seller/register", payload);
+      const result = await api.post("/auth/seller/register", payload) as SellerRegistrationResponse;
       return {
         success: true,
         message: result.message,
         status: result.status,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Seller registration failed:", error);
+      const errorData = getApiErrorData(error);
       return {
         success: false,
-        message: error.response?.data?.error || "Registration failed",
+        message: errorData?.error || "Registration failed",
       };
     }
   };
@@ -259,7 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshToken = async (): Promise<boolean> => {
     if (!token) return false;
     try {
-      const result: any = await api.get(`/auth/refresh?token=${token}`);
+      const result = await api.get(`/auth/refresh?token=${token}`) as AuthResponse;
       const newUser: User = {
         ...result.user,
         source: user?.source,

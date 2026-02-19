@@ -45,7 +45,8 @@ export default function EnhancedLogin() {
             const success = await login(adminData.email, adminData.password);
             if (success) {
                 toast.success("Welcome back!");
-                const from = (location.state as any)?.from?.pathname || "/admin";
+                const state = location.state as { from?: { pathname?: string } } | null;
+                const from = state?.from?.pathname || "/admin";
                 navigate(from);
             } else {
                 toast.error("Invalid credentials");
@@ -70,12 +71,15 @@ export default function EnhancedLogin() {
             } else {
                 toast.error("Invalid credentials");
             }
-        } catch (error: any) {
-            const status = error.response?.data?.status;
+        } catch (error: unknown) {
+            const errorData = error && typeof error === "object" && "response" in error
+                ? (error as { response?: { data?: { status?: string; reason?: string } } }).response?.data
+                : undefined;
+            const status = errorData?.status;
             if (status === "pending") {
                 toast.error("Your account is pending approval");
             } else if (status === "rejected") {
-                toast.error("Your account has been rejected: " + error.response?.data?.reason);
+                toast.error("Your account has been rejected: " + (errorData?.reason || "No reason provided"));
             } else {
                 toast.error("Login failed");
             }

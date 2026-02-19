@@ -565,36 +565,36 @@ app.get('/api/categories', (req, res) => {
 app.get('/api/products', (req, res) => {
   const { category, q, sort, minPrice, maxPrice, rating, inStock } = req.query;
   let result = products.slice();
-  
+
   // Filter by category
   if (category) {
     const cat = categories.find(c => c.name === category);
     if (cat) result = result.filter(p => p.categoryId === cat.id);
   }
-  
+
   // Filter by search query
   if (q) {
     const qq = q.toString().toLowerCase();
     result = result.filter(p => p.name.toLowerCase().includes(qq) || p.description.toLowerCase().includes(qq));
   }
-  
+
   // Filter by price range
   if (minPrice) result = result.filter(p => p.price >= parseFloat(minPrice));
   if (maxPrice) result = result.filter(p => p.price <= parseFloat(maxPrice));
-  
+
   // Filter by rating
   if (rating) result = result.filter(p => p.rating >= parseFloat(rating));
-  
+
   // Filter by stock
   if (inStock === 'true') result = result.filter(p => p.inStock);
-  
+
   // Sorting
   if (sort === 'price-low') result.sort((a, b) => a.price - b.price);
   else if (sort === 'price-high') result.sort((a, b) => b.price - a.price);
   else if (sort === 'rating') result.sort((a, b) => b.rating - a.rating);
   else if (sort === 'newest') result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   else if (sort === 'best-sellers') result.sort((a, b) => b.reviewCount - a.reviewCount);
-  
+
   res.json(result.map((product) => toPublicProduct(product, req)));
 });
 
@@ -875,10 +875,10 @@ app.post('/api/payments/initiate', (req, res) => {
     method === 'paystack'
       ? ['Complete payment in the secure card window.', 'After confirmation, your order will be approved for processing.']
       : [
-          `Send payment to ${process.env.SUPPORT_PHONE || '+232-76-123-456'} (${process.env.BRAND_NAME || 'IMK-MARKET'}).`,
-          `Use reference: ${reference}.`,
-          'Upload your payment proof for admin approval.',
-        ];
+        `Send payment to ${process.env.SUPPORT_PHONE || '+232-76-123-456'} (${process.env.BRAND_NAME || 'IMK-MARKET'}).`,
+        `Use reference: ${reference}.`,
+        'Upload your payment proof for admin approval.',
+      ];
 
   res.status(201).json({
     id: record.id,
@@ -993,9 +993,12 @@ app.get('/api/featured', (req, res) => {
   res.json(featured.map((product) => toPublicProduct(product, req)));
 });
 
-app.post('/api/customers/register', (req, res) => {
+// ------------------------
+// Authentication (unified paths)
+// ------------------------
+app.post('/api/auth/customer/register', (req, res) => {
   const payload = req.body || {};
-  const name = normalizeText(payload.name) || 'Customer';
+  const name = normalizeText(payload.name);
   const email = normalizeText(payload.email);
   const phone = normalizeCustomerPhone(payload.phone);
   const password = (payload.password || '').toString();
@@ -1026,14 +1029,19 @@ app.post('/api/customers/register', (req, res) => {
   customerAccounts.unshift(account);
   return res.status(201).json({
     token: `customer-${account.id}`,
-    role: account.role,
-    name: account.name,
-    phone: account.phone,
-    email: account.email,
+    user: {
+      userId: account.id,
+      name: account.name,
+      phone: account.phone,
+      email: account.email,
+      roles: ['Customer'],
+      permissions: [],
+      isSuperAdmin: false
+    }
   });
 });
 
-app.post('/api/customers/login', (req, res) => {
+app.post('/api/auth/customer/login', (req, res) => {
   const payload = req.body || {};
   const phone = normalizeCustomerPhone(payload.phone);
   const password = (payload.password || '').toString();
@@ -1049,15 +1057,94 @@ app.post('/api/customers/login', (req, res) => {
 
   return res.json({
     token: `customer-${account.id}`,
-    role: account.role,
-    name: account.name,
-    phone: account.phone,
-    email: account.email,
+    user: {
+      userId: account.id,
+      name: account.name,
+      phone: account.phone,
+      email: account.email,
+      roles: ['Customer'],
+      permissions: [],
+      isSuperAdmin: false
+    }
   });
 });
 
+app.post('/api/auth/admin/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Invalid credentials' });
+  }
+  const emailOk = email.toString().toLowerCase() === MOCK_ADMIN_EMAIL.toLowerCase();
+  const passwordOk = password === MOCK_ADMIN_PASSWORD || password === 'admin123' || password === 'Manager123!@#';
+  if (!emailOk || !passwordOk) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  return res.json({
+    token: 'mock-admin-token',
+    user: {
+      userId: 'admin-1',
+      email: email,
+      name: 'Store Manager',
+      roles: ['Manager'],
+      permissions: [{ resource: 'orders', action: 'read' }, { resource: 'products', action: 'manage' }],
+      isSuperAdmin: false
+    }
+  });
+});
+
+app.post('/api/auth/super-admin/login', (req, res) => {
+  const { email, password } = req.body || {};
+  const SUPER_ADMIN_EMAIL = 'admin@primmesisc.com';
+  const SUPER_ADMIN_PASS = 'SuperSecure123!@#';
+
+  console.log(`[AUTH] Super Admin login attempt: ${email}`);
+
+  const emailMatches = email && email.toString().trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const passwordMatches = password && password.toString().trim() === SUPER_ADMIN_PASS;
+
+  if (emailMatches && passwordMatches) {
+    console.log(`[AUTH] Super Admin login SUCCESS: ${email}`);
+    return res.json({
+      token: 'mock-super-admin-token',
+      user: {
+        userId: 'super-admin-1',
+        email: SUPER_ADMIN_EMAIL,
+        name: 'Super System Admin',
+        roles: ['Super Admin'],
+        permissions: [],
+        isSuperAdmin: true
+      }
+    });
+  }
+  console.log(`[AUTH] Super Admin login FAILED: ${email}`);
+  return res.status(401).json({ error: 'Invalid credentials' });
+});
+
+
+app.post('/api/auth/seller/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (email === 'seller@example.com' && (password === 'Seller123!@#' || password === 'seller123')) {
+    return res.json({
+      token: 'mock-seller-token',
+      user: {
+        userId: 'seller-1',
+        email: 'seller@example.com',
+        name: 'Demo Seller',
+        roles: ['Seller'],
+        permissions: [{ resource: 'products', action: 'own' }],
+        isSuperAdmin: false,
+        sellerProfile: {
+          id: 'sp-1',
+          businessName: 'Demo Store',
+          status: 'active'
+        }
+      }
+    });
+  }
+  return res.status(401).json({ error: 'Invalid credentials' });
+});
 // ------------------------
-// Admin (mock implementation)
+// Admin / Super Admin Middleware
 // ------------------------
 const requireAdmin = (req, res, next) => {
   const auth = (req.headers.authorization || '').toString();
@@ -1067,20 +1154,35 @@ const requireAdmin = (req, res, next) => {
   return next();
 };
 
-app.post('/api/admin/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Invalid credentials' });
-  }
-  const emailOk = email.toString().toLowerCase() === MOCK_ADMIN_EMAIL.toLowerCase();
-  const passwordOk = password === MOCK_ADMIN_PASSWORD || password === 'admin123';
-  if (!emailOk || !passwordOk) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-  return res.json({ token: 'mock-admin-token', role: 'admin', email });
+app.get('/api/super-admin/dashboard', requireAdmin, (req, res) => {
+  res.json({
+    totalTenants: 1,
+    activeTenants: 1,
+    totalUsers: customerAccounts.length + 5,
+    totalSellers: 3,
+    pendingSellers: pendingProducts.length,
+    totalProducts: products.length,
+    totalOrders: orders.length,
+    totalRevenue: orders.reduce((sum, o) => sum + (o.total || 0), 0)
+  });
+});
+
+app.get('/api/super-admin/sellers/pending', requireAdmin, (req, res) => {
+  res.json(pendingProducts.filter(p => p.status === 'pending').map(p => ({
+    id: p.id,
+    businessName: p.sellerName,
+    businessEmail: p.sellerEmail,
+    status: 'pending',
+    createdAt: p.submittedAt,
+    user: {
+      name: p.sellerName,
+      email: p.sellerEmail
+    }
+  })));
 });
 
 app.get('/api/admin/analytics', requireAdmin, (_req, res) => {
+
   const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
   const totalOrders = orders.length;
   const totalProducts = products.length;

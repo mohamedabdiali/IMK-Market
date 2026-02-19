@@ -38,6 +38,15 @@ interface Category {
     name: string;
 }
 
+interface ProductFormData {
+    name: string;
+    description: string;
+    price: number;
+    stock: number;
+    categoryId: string;
+    images: string[];
+}
+
 export default function SellerDashboard() {
     const { token } = useAuth();
     const queryClient = useQueryClient();
@@ -244,7 +253,7 @@ function ProductDialog({
     token: string;
     onSuccess: () => void;
 }) {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<ProductFormData>({
         name: "",
         description: "",
         price: 0,
@@ -279,7 +288,7 @@ function ProductDialog({
     }, [open, product]);
 
     const mutation = useMutation({
-        mutationFn: (data: any) => {
+        mutationFn: (data: ProductFormData) => {
             if (product) {
                 return api.patch(`/seller/products/${product.id}`, data, token);
             }

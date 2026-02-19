@@ -27,7 +27,7 @@ export interface AuthRequest extends Request {
 // ============================================
 
 export async function generateToken(userId: string): Promise<{ token: string; user: AuthUser }> {
-    const user = await (prisma.user as any).findUnique({
+    const user = await prisma.user.findUnique({
         where: { id: userId },
         include: {
             userRoles: {
@@ -51,13 +51,13 @@ export async function generateToken(userId: string): Promise<{ token: string; us
     }
 
     // Collect all roles
-    const roles = (user.userRoles as any[] || []).map((ur) => ur.role.name);
+    const roles = user.userRoles.map((ur) => ur.role.name);
 
     // Collect all unique permissions
     const permissionsSet = new Set<string>();
     const permissions: { resource: string; action: string }[] = [];
 
-    const userRoles = (user.userRoles as any[] || []);
+    const userRoles = user.userRoles;
     for (const userRole of userRoles) {
         for (const rolePermission of userRole.role.rolePermissions) {
             const key = `${rolePermission.permission.resource}:${rolePermission.permission.action}`;
@@ -74,10 +74,10 @@ export async function generateToken(userId: string): Promise<{ token: string; us
     const authUser: AuthUser = {
         userId: user.id,
         email: user.email,
-        tenantId: (user as any).tenantId || undefined,
+        tenantId: user.tenantId ?? undefined,
         roles,
         permissions,
-        isSuperAdmin: (user as any).isSuperAdmin || false,
+        isSuperAdmin: Boolean(user.isSuperAdmin),
     };
 
     const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: "12h" });
@@ -192,7 +192,7 @@ export function requireTenantAccess(req: AuthRequest, res: Response, next: NextF
  * Apply tenant isolation to queries
  * Automatically filters queries by user's tenant
  */
-export function getTenantFilter(req: AuthRequest): { tenantId?: string } | {} {
+export function getTenantFilter(req: AuthRequest): { tenantId?: string } {
     if (!req.user) {
         return {};
     }
@@ -260,12 +260,12 @@ export async function createAuditLog(params: {
     action: string;
     resource: string;
     resourceId?: string;
-    changes?: any;
+    changes?: unknown;
     ipAddress?: string;
     userAgent?: string;
 }) {
     try {
-        await (prisma as any).auditLog.create({
+        await prisma.auditLog.create({
             data: {
                 userId: params.userId,
                 tenantId: params.tenantId,
@@ -321,10 +321,10 @@ export async function createNotification(params: {
     type: string;
     title: string;
     message: string;
-    data?: any;
+    data?: unknown;
 }) {
     try {
-        await (prisma as any).notification.create({
+        await prisma.notification.create({
             data: {
                 userId: params.userId,
                 tenantId: params.tenantId,
@@ -348,10 +348,10 @@ export async function notifyRole(params: {
     type: string;
     title: string;
     message: string;
-    data?: any;
+    data?: unknown;
 }) {
     try {
-        const role = await (prisma as any).role.findFirst({
+        const role = await prisma.role.findFirst({
             where: {
                 name: params.roleName,
                 tenantId: params.tenantId || null,
@@ -391,11 +391,11 @@ export async function notifySuperAdmins(params: {
     type: string;
     title: string;
     message: string;
-    data?: any;
+    data?: unknown;
 }) {
     try {
         const superAdmins = await prisma.user.findMany({
-            where: { isSuperAdmin: true } as any,
+            where: { isSuperAdmin: true },
         });
 
         for (const admin of superAdmins) {

@@ -1,5 +1,6 @@
 // Super Admin Routes
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import prisma from "../prisma.js";
 import {
@@ -214,7 +215,6 @@ router.post("/users", async (req: AuthRequest, res) => {
             });
         }
 
-        const bcrypt = require("bcryptjs");
         const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
 
         const user = await prisma.user.create({

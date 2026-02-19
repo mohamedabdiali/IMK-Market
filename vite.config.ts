@@ -5,10 +5,10 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    host: "::",
+    host: "127.0.0.1",
     port: 8080,
     proxy: {
-      "/api": "http://localhost:5050",
+      "/api": "http://127.0.0.1:5050",
     },
   },
   plugins: [react()],
