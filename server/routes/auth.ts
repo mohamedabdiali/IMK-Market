@@ -730,8 +730,116 @@ router.post("/refresh", async (req, res) => {
 // SELLER GOOGLE OAUTH (Placeholder)
 // ============================================
 
-router.post("/seller/google", (_req, res) => {
-    res.status(501).json({ error: "Google OAuth not configured" });
+router.post("/seller/google", async (req, res) => {
+    try {
+        const schema = z.object({
+            credential: z.string().min(10),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid Google credential" });
+        }
+
+        const googleClientId = process.env.GOOGLE_CLIENT_ID;
+        if (!googleClientId) {
+            return res.status(501).json({ error: "Google OAuth not configured" });
+        }
+
+        const tokenInfoRes = await fetch(
+            `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(parsed.data.credential)}`
+        );
+        if (!tokenInfoRes.ok) {
+            return res.status(401).json({ error: "Google token verification failed" });
+        }
+
+        const tokenInfo = await tokenInfoRes.json() as {
+            aud?: string;
+            email?: string;
+            email_verified?: string | boolean;
+            name?: string;
+        };
+
+        if (!tokenInfo.email || tokenInfo.aud !== googleClientId) {
+            return res.status(401).json({ error: "Google token invalid" });
+        }
+
+        if (tokenInfo.email_verified !== true && tokenInfo.email_verified !== "true") {
+            return res.status(401).json({ error: "Google email not verified" });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { email: tokenInfo.email },
+            include: {
+                sellerProfile: true,
+                userRoles: {
+                    include: {
+                        role: true,
+                    },
+                },
+            },
+        });
+
+        if (!user || !user.sellerProfile) {
+            return res.status(404).json({
+                error: "Seller account not found. Please register first.",
+                status: "not_registered",
+            });
+        }
+
+        if (user.disabled) {
+            return res.status(403).json({ error: "Account disabled" });
+        }
+
+        if (user.sellerProfile.status === "pending") {
+            return res.status(403).json({
+                error: "Account pending approval",
+                status: "pending",
+            });
+        }
+
+        if (user.sellerProfile.status === "rejected") {
+            return res.status(403).json({
+                error: "Account has been rejected",
+                status: "rejected",
+                reason: user.sellerProfile.rejectionReason,
+            });
+        }
+
+        if (user.sellerProfile.status === "suspended") {
+            return res.status(403).json({
+                error: "Account has been suspended",
+                status: "suspended",
+            });
+        }
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                lastLoginAt: new Date(),
+                name: user.name || tokenInfo.name || undefined,
+            },
+        });
+
+        const { token, user: authUser } = await generateToken(user.id);
+
+        await prisma.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt: new Date() },
+        });
+        const refreshToken = await issueRefreshToken(user.id);
+        const csrfToken = generateTokenValue(CSRF_TOKEN_BYTES);
+        setAuthCookies(res, refreshToken, csrfToken);
+
+        res.json({
+            token,
+            user: authUser,
+            sellerProfile: user.sellerProfile,
+            csrfToken,
+        });
+    } catch (error) {
+        console.error("Seller Google OAuth error:", error);
+        res.status(500).json({ error: "Google login failed" });
+    }
 });
 
 // ============================================

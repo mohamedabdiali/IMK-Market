@@ -1210,6 +1210,33 @@ app.post('/api/auth/seller/login', (req, res) => {
   return res.status(401).json({ error: 'Invalid credentials' });
 });
 
+app.post('/api/auth/seller/google', (req, res) => {
+  const { credential } = req.body || {};
+  if (!credential) {
+    return res.status(400).json({ error: 'Invalid Google credential' });
+  }
+  const user = {
+    userId: 'seller-google-1',
+    email: 'seller@example.com',
+    name: 'Google Seller',
+    roles: ['Seller'],
+    permissions: [{ resource: 'products', action: 'own' }],
+    isSuperAdmin: false,
+    sellerProfile: {
+      id: 'sp-google-1',
+      businessName: 'Google Demo Store',
+      status: 'active'
+    }
+  };
+  const session = issueMockSession(user);
+  setAuthCookies(res, session.refreshToken, session.csrfToken);
+  return res.json({
+    token: 'mock-seller-google-token',
+    user,
+    csrfToken: session.csrfToken
+  });
+});
+
 app.post('/api/auth/refresh', (req, res) => {
   const cookies = parseCookies(req.headers.cookie || '');
   const csrfHeader = (req.headers['x-csrf-token'] || '').toString();
@@ -1273,6 +1300,106 @@ const requireAdmin = (req, res, next) => {
   return next();
 };
 
+const superAdminModules = [
+  'Client Management',
+  'Product Management',
+  'Order Management',
+  'Marketing Tools',
+  'Analytics Dashboard',
+  'Seller Management',
+  'User Management',
+  'Reports',
+  'Settings',
+  'Notifications',
+];
+
+const mockPermissions = [
+  { id: 'perm-1', resource: 'dashboard', action: 'view', description: 'View dashboard' },
+  { id: 'perm-2', resource: 'products', action: 'manage', description: 'Manage products' },
+  { id: 'perm-3', resource: 'orders', action: 'manage', description: 'Manage orders' },
+  { id: 'perm-4', resource: 'users', action: 'manage', description: 'Manage users' },
+  { id: 'perm-5', resource: 'settings', action: 'manage', description: 'Manage settings' },
+];
+
+const mockRoles = [
+  {
+    id: 'role-super',
+    name: 'Super Admin',
+    description: 'Full access',
+    tenantId: null,
+    isSystemRole: true,
+    rolePermissions: mockPermissions.map((permission) => ({ permission })),
+  },
+  {
+    id: 'role-manager',
+    name: 'Manager',
+    description: 'Tenant management',
+    tenantId: null,
+    isSystemRole: true,
+    rolePermissions: mockPermissions
+      .filter((permission) => permission.resource !== 'settings')
+      .map((permission) => ({ permission })),
+  },
+  {
+    id: 'role-seller',
+    name: 'Seller',
+    description: 'Seller access',
+    tenantId: null,
+    isSystemRole: true,
+    rolePermissions: [{ permission: mockPermissions[1] }],
+  },
+];
+
+const mockTenants = [
+  {
+    id: 'tenant-1',
+    name: 'IMK-Market',
+    subscriptionType: 'E-commerce Business',
+    subscriptionStatus: 'active',
+    modulesEnabled: superAdminModules,
+    createdAt: nowIso(),
+  },
+];
+
+const mockUsers = [
+  {
+    id: 'user-super',
+    email: 'admin@primmesisc.com',
+    name: 'Super Admin',
+    tenantId: null,
+    tenant: null,
+    isSuperAdmin: true,
+    disabled: false,
+    createdAt: nowIso(),
+    sellerProfile: null,
+    userRoles: [{ role: mockRoles[0] }],
+  },
+];
+
+const mockSubscriptions = [
+  {
+    id: 'sub-1',
+    tenantId: mockTenants[0].id,
+    planName: mockTenants[0].subscriptionType,
+    status: 'active',
+    billingCycle: 'monthly',
+    price: 0,
+    currency: 'USD',
+    endsAt: null,
+    tenant: mockTenants[0],
+  },
+];
+
+const mockSettings = [
+  { id: 'setting-1', key: 'support_email', value: 'info@imkmarket.com', updatedAt: nowIso() },
+];
+
+const mockFeatureToggles = [
+  { id: 'toggle-1', key: 'seller_approvals', enabled: true, description: 'Require seller approvals', updatedAt: nowIso() },
+];
+
+const mockAuditLogs = [];
+
 app.get('/api/super-admin/dashboard', requireAdmin, (req, res) => {
   res.json({
     totalTenants: 1,
@@ -1298,6 +1425,247 @@ app.get('/api/super-admin/sellers/pending', requireAdmin, (req, res) => {
       email: p.sellerEmail
     }
   })));
+});
+
+const attachTenantCounts = (tenant) => ({
+  ...tenant,
+  _count: {
+    users: mockUsers.filter((user) => user.tenantId === tenant.id).length,
+    products: products.length,
+    orders: orders.length,
+  },
+});
+
+app.get('/api/super-admin/tenants', requireAdmin, (_req, res) => {
+  res.json(mockTenants.map(attachTenantCounts));
+});
+
+app.post('/api/super-admin/tenants', requireAdmin, (req, res) => {
+  const payload = req.body || {};
+  const tenant = {
+    id: createId('TEN', 3),
+    name: payload.name || 'New Tenant',
+    subscriptionType: payload.subscriptionType || 'E-commerce Business',
+    subscriptionStatus: 'active',
+    modulesEnabled: Array.isArray(payload.modulesEnabled) ? payload.modulesEnabled : [],
+    createdAt: nowIso(),
+  };
+  mockTenants.unshift(tenant);
+  mockSubscriptions.unshift({
+    id: createId('SUB', 3),
+    tenantId: tenant.id,
+    planName: tenant.subscriptionType,
+    status: 'active',
+    billingCycle: 'monthly',
+    price: 0,
+    currency: 'USD',
+    endsAt: null,
+    tenant,
+  });
+  res.status(201).json(tenant);
+});
+
+app.patch('/api/super-admin/tenants/:id', requireAdmin, (req, res) => {
+  const tenant = mockTenants.find((item) => item.id === req.params.id);
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  const payload = req.body || {};
+  if (payload.name) tenant.name = payload.name;
+  if (payload.subscriptionType) tenant.subscriptionType = payload.subscriptionType;
+  if (payload.subscriptionStatus) tenant.subscriptionStatus = payload.subscriptionStatus;
+  if (Array.isArray(payload.modulesEnabled)) tenant.modulesEnabled = payload.modulesEnabled;
+  const subscription = mockSubscriptions.find((item) => item.tenantId === tenant.id);
+  if (subscription) {
+    if (payload.subscriptionType) subscription.planName = payload.subscriptionType;
+    if (payload.subscriptionStatus) subscription.status = payload.subscriptionStatus;
+  }
+  res.json(tenant);
+});
+
+app.get('/api/super-admin/permissions', requireAdmin, (_req, res) => {
+  res.json(mockPermissions);
+});
+
+app.get('/api/super-admin/roles', requireAdmin, (_req, res) => {
+  const roles = mockRoles.map((role) => ({
+    ...role,
+    _count: {
+      userRoles: mockUsers.filter((user) => user.userRoles.some((entry) => entry.role.id === role.id)).length,
+    },
+  }));
+  res.json(roles);
+});
+
+app.post('/api/super-admin/roles', requireAdmin, (req, res) => {
+  const payload = req.body || {};
+  const permissionIds = Array.isArray(payload.permissionIds) ? payload.permissionIds : [];
+  const rolePermissions = mockPermissions
+    .filter((permission) => permissionIds.includes(permission.id))
+    .map((permission) => ({ permission }));
+  const role = {
+    id: createId('ROLE', 3),
+    name: payload.name || 'Custom Role',
+    description: payload.description || null,
+    tenantId: payload.tenantId || null,
+    isSystemRole: false,
+    rolePermissions,
+  };
+  mockRoles.unshift(role);
+  res.status(201).json(role);
+});
+
+app.patch('/api/super-admin/roles/:id', requireAdmin, (req, res) => {
+  const role = mockRoles.find((item) => item.id === req.params.id);
+  if (!role) return res.status(404).json({ error: 'Role not found' });
+  const payload = req.body || {};
+  if (payload.name) role.name = payload.name;
+  if (payload.description !== undefined) role.description = payload.description;
+  if (Array.isArray(payload.permissionIds)) {
+    role.rolePermissions = mockPermissions
+      .filter((permission) => payload.permissionIds.includes(permission.id))
+      .map((permission) => ({ permission }));
+  }
+  res.json(role);
+});
+
+app.delete('/api/super-admin/roles/:id', requireAdmin, (req, res) => {
+  const index = mockRoles.findIndex((role) => role.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Role not found' });
+  const role = mockRoles[index];
+  if (role.isSystemRole) return res.status(403).json({ error: 'Cannot delete system role' });
+  mockRoles.splice(index, 1);
+  res.json({ success: true });
+});
+
+app.get('/api/super-admin/users', requireAdmin, (_req, res) => {
+  res.json(mockUsers);
+});
+
+app.post('/api/super-admin/users', requireAdmin, (req, res) => {
+  const payload = req.body || {};
+  const roleIds = Array.isArray(payload.roleIds) ? payload.roleIds : [];
+  const userRoles = mockRoles
+    .filter((role) => roleIds.includes(role.id))
+    .map((role) => ({ role }));
+  const user = {
+    id: createId('USR', 3),
+    email: payload.email || `user-${Date.now()}@example.com`,
+    name: payload.name || null,
+    username: payload.username || null,
+    phone: payload.phone || null,
+    tenantId: payload.tenantId || null,
+    tenant: mockTenants.find((tenant) => tenant.id === payload.tenantId) || null,
+    isSuperAdmin: false,
+    disabled: false,
+    createdAt: nowIso(),
+    sellerProfile: null,
+    userRoles,
+  };
+  mockUsers.unshift(user);
+  res.status(201).json(user);
+});
+
+app.patch('/api/super-admin/users/:id/roles', requireAdmin, (req, res) => {
+  const user = mockUsers.find((item) => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const roleIds = Array.isArray(req.body?.roleIds) ? req.body.roleIds : [];
+  user.userRoles = mockRoles.filter((role) => roleIds.includes(role.id)).map((role) => ({ role }));
+  res.json({ success: true });
+});
+
+app.delete('/api/super-admin/users/:id', requireAdmin, (req, res) => {
+  const index = mockUsers.findIndex((item) => item.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'User not found' });
+  const user = mockUsers[index];
+  if (user.isSuperAdmin) return res.status(403).json({ error: 'Cannot delete super admin' });
+  mockUsers.splice(index, 1);
+  res.json({ success: true });
+});
+
+app.get('/api/super-admin/subscriptions', requireAdmin, (_req, res) => {
+  res.json(mockSubscriptions);
+});
+
+app.post('/api/super-admin/subscriptions', requireAdmin, (req, res) => {
+  const payload = req.body || {};
+  const tenant = mockTenants.find((item) => item.id === payload.tenantId) || null;
+  const subscription = {
+    id: createId('SUB', 3),
+    tenantId: payload.tenantId,
+    planName: payload.planName || 'Custom Plan',
+    status: payload.status || 'active',
+    billingCycle: payload.billingCycle || 'monthly',
+    price: payload.price || 0,
+    currency: payload.currency || 'USD',
+    endsAt: payload.endsAt || null,
+    tenant,
+  };
+  mockSubscriptions.unshift(subscription);
+  res.status(201).json(subscription);
+});
+
+app.patch('/api/super-admin/subscriptions/:id', requireAdmin, (req, res) => {
+  const subscription = mockSubscriptions.find((item) => item.id === req.params.id);
+  if (!subscription) return res.status(404).json({ error: 'Subscription not found' });
+  const payload = req.body || {};
+  if (payload.planName) subscription.planName = payload.planName;
+  if (payload.status) subscription.status = payload.status;
+  if (payload.billingCycle) subscription.billingCycle = payload.billingCycle;
+  if (payload.price !== undefined) subscription.price = payload.price;
+  if (payload.currency) subscription.currency = payload.currency;
+  if (payload.endsAt !== undefined) subscription.endsAt = payload.endsAt;
+  res.json(subscription);
+});
+
+app.get('/api/super-admin/system/settings', requireAdmin, (_req, res) => {
+  res.json(mockSettings);
+});
+
+app.put('/api/super-admin/system/settings/:key', requireAdmin, (req, res) => {
+  const key = req.params.key;
+  const existing = mockSettings.find((setting) => setting.key === key);
+  if (existing) {
+    existing.value = req.body?.value;
+    existing.updatedAt = nowIso();
+    return res.json(existing);
+  }
+  const setting = { id: createId('SET', 3), key, value: req.body?.value, updatedAt: nowIso() };
+  mockSettings.unshift(setting);
+  return res.json(setting);
+});
+
+app.get('/api/super-admin/feature-toggles', requireAdmin, (_req, res) => {
+  res.json(mockFeatureToggles);
+});
+
+app.patch('/api/super-admin/feature-toggles/:key', requireAdmin, (req, res) => {
+  const key = req.params.key;
+  const existing = mockFeatureToggles.find((toggle) => toggle.key === key);
+  if (existing) {
+    if (typeof req.body?.enabled === 'boolean') existing.enabled = req.body.enabled;
+    if (req.body?.description !== undefined) existing.description = req.body.description;
+    existing.updatedAt = nowIso();
+    return res.json(existing);
+  }
+  const toggle = {
+    id: createId('TGL', 3),
+    key,
+    enabled: Boolean(req.body?.enabled),
+    description: req.body?.description || null,
+    updatedAt: nowIso(),
+  };
+  mockFeatureToggles.unshift(toggle);
+  return res.json(toggle);
+});
+
+app.get('/api/super-admin/audit-logs', requireAdmin, (req, res) => {
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 50);
+  const total = mockAuditLogs.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  res.json({
+    logs: mockAuditLogs.slice((page - 1) * limit, page * limit),
+    pagination: { page, limit, total, totalPages },
+  });
 });
 
 app.get('/api/admin/analytics', requireAdmin, (_req, res) => {

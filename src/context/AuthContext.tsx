@@ -83,6 +83,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
   loginSuperAdmin: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
   loginSeller: (email: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
+  loginSellerWithGoogle: (credential: string) => Promise<{ success: boolean; mustReset?: boolean; status?: string; message?: string }>;
   loginCustomer: (phone: string, password: string) => Promise<{ success: boolean; mustReset?: boolean }>;
   registerCustomer: (payload: { name?: string; email?: string; phone: string; password: string }) => Promise<boolean>;
   registerSeller: (payload: SellerRegistrationPayload) => Promise<{ success: boolean; message?: string; status?: string }>;
@@ -246,6 +247,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loginSellerWithGoogle = async (
+    credential: string,
+  ): Promise<{ success: boolean; mustReset?: boolean; status?: string; message?: string }> => {
+    try {
+      const result = await api.post("/auth/seller/google", { credential }) as AuthResponse;
+      const newUser: User = {
+        ...result.user,
+        sellerProfile: result.sellerProfile,
+        source: "seller",
+        role: "user",
+      };
+      applySession(newUser, result.token, result.csrfToken ?? null);
+      return { success: true, mustReset: Boolean(result.user.mustResetPassword) };
+    } catch (error: unknown) {
+      console.error("Seller Google login failed:", error);
+      const errorData = getApiErrorData(error);
+      return {
+        success: false,
+        status: errorData?.status,
+        message: errorData?.error || errorData?.reason,
+      };
+    }
+  };
+
   const loginCustomer = async (phone: string, password: string): Promise<{ success: boolean; mustReset?: boolean }> => {
     try {
       const result = await api.post("/auth/customer/login", { phone, password }) as AuthResponse;
@@ -388,6 +413,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         loginSuperAdmin,
         loginSeller,
+        loginSellerWithGoogle,
         loginCustomer,
         registerCustomer,
         registerSeller,

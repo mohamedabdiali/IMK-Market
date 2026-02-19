@@ -34,11 +34,35 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     headers,
     credentials: "include",
   });
+  const text = await res.text();
   if (!res.ok) {
-    const message = await res.text();
-    throw new Error(message || `Request failed: ${res.status}`);
+    let data: unknown = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text ? { error: text } : null;
+    }
+    const message =
+      (data && typeof data === "object" && "error" in data && typeof (data as { error?: unknown }).error === "string"
+        ? (data as { error: string }).error
+        : undefined) ||
+      (data && typeof data === "object" && "message" in data && typeof (data as { message?: unknown }).message === "string"
+        ? (data as { message: string }).message
+        : undefined) ||
+      text ||
+      `Request failed: ${res.status}`;
+    const error = new Error(message) as Error & { response?: { status: number; data: unknown } };
+    error.response = { status: res.status, data };
+    throw error;
   }
-  return res.json() as Promise<T>;
+  if (!text) {
+    return {} as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
 }
 
 export const api = {
@@ -197,6 +221,12 @@ export const api = {
   patch: (path: string, payload?: unknown, token?: string) =>
     apiFetch(path, {
       method: "PATCH",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: payload ? JSON.stringify(payload) : undefined,
+    }),
+  put: (path: string, payload?: unknown, token?: string) =>
+    apiFetch(path, {
+      method: "PUT",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: payload ? JSON.stringify(payload) : undefined,
     }),

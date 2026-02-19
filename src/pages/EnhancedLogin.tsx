@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,55 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Shield, Store, User } from "lucide-react";
 
+declare global {
+    interface Window {
+        google?: {
+            accounts?: {
+                id?: {
+                    initialize: (config: { client_id: string; callback: (response: { credential?: string }) => void }) => void;
+                    renderButton: (parent: HTMLElement, options: { theme?: string; size?: string; width?: string }) => void;
+                };
+            };
+        };
+    }
+}
+
+const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+
+const loadGoogleIdentityScript = () =>
+    new Promise<void>((resolve, reject) => {
+        if (typeof window === "undefined") {
+            resolve();
+            return;
+        }
+        if (window.google?.accounts?.id) {
+            resolve();
+            return;
+        }
+        const existing = document.querySelector(`script[src="${GOOGLE_SCRIPT_SRC}"]`) as HTMLScriptElement | null;
+        if (existing) {
+            existing.addEventListener("load", () => resolve());
+            existing.addEventListener("error", () => reject(new Error("Google script failed to load")));
+            return;
+        }
+        const script = document.createElement("script");
+        script.src = GOOGLE_SCRIPT_SRC;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Google script failed to load"));
+        document.head.appendChild(script);
+    });
+
 export default function EnhancedLogin() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login, loginSuperAdmin, loginSeller, loginCustomer } = useAuth();
+    const { login, loginSuperAdmin, loginSeller, loginSellerWithGoogle, loginCustomer } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState("customer");
+    const googleButtonRef = useRef<HTMLDivElement | null>(null);
+    const [googleReady, setGoogleReady] = useState(false);
+    const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
     // Super Admin Login
     const [superAdminData, setSuperAdminData] = useState({ email: "", password: "" });
@@ -99,6 +142,83 @@ export default function EnhancedLogin() {
             setIsLoading(false);
         }
     };
+
+    const handleGoogleCredential = useCallback(
+        async (credential: string) => {
+            if (!credential) {
+                toast.error("Google sign-in failed");
+                return;
+            }
+            setIsLoading(true);
+            try {
+                const result = await loginSellerWithGoogle(credential);
+                if (result.success) {
+                    toast.success("Welcome back, Seller!");
+                    if (result.mustReset) {
+                        navigate("/reset-password");
+                    } else {
+                        navigate("/seller");
+                    }
+                    return;
+                }
+                if (result.status === "pending") {
+                    toast.error("Your account is pending approval");
+                    return;
+                }
+                if (result.status === "rejected") {
+                    toast.error(`Your account was rejected: ${result.message || "No reason provided"}`);
+                    return;
+                }
+                if (result.status === "not_registered") {
+                    toast.error("No seller account found. Please register first.");
+                    return;
+                }
+                toast.error(result.message || "Google sign-in failed");
+            } catch {
+                toast.error("Google sign-in failed");
+            } finally {
+                setIsLoading(false);
+            }
+        },
+        [loginSellerWithGoogle, navigate],
+    );
+
+    useEffect(() => {
+        let active = true;
+        if (activeTab !== "seller" || !googleClientId) {
+            return undefined;
+        }
+        loadGoogleIdentityScript()
+            .then(() => {
+                if (active) setGoogleReady(true);
+            })
+            .catch(() => {
+                if (active) setGoogleReady(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [activeTab, googleClientId]);
+
+    useEffect(() => {
+        if (!googleReady || !googleClientId || !googleButtonRef.current || !window.google?.accounts?.id) {
+            return;
+        }
+        window.google.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: (response) => {
+                if (response.credential) {
+                    handleGoogleCredential(response.credential);
+                }
+            },
+        });
+        googleButtonRef.current.innerHTML = "";
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+            theme: "outline",
+            size: "large",
+            width: "100%",
+        });
+    }, [googleReady, googleClientId, handleGoogleCredential]);
 
     // Customer Login
     const [customerData, setCustomerData] = useState({ phone: "", password: "" });
@@ -193,6 +313,22 @@ export default function EnhancedLogin() {
                         {/* Seller Login */}
                         <TabsContent value="seller">
                             <form onSubmit={handleSellerLogin} className="space-y-4">
+                                <div className="space-y-3">
+                                    {googleClientId ? (
+                                        <div className={isLoading ? "pointer-events-none opacity-60" : ""}>
+                                            <div ref={googleButtonRef} />
+                                        </div>
+                                    ) : (
+                                        <Button type="button" variant="outline" className="w-full" disabled>
+                                            Google OAuth not configured
+                                        </Button>
+                                    )}
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-px flex-1 bg-border" />
+                                        <span className="text-xs text-muted-foreground">or</span>
+                                        <div className="h-px flex-1 bg-border" />
+                                    </div>
+                                </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="seller-email">Email</Label>
                                     <Input
