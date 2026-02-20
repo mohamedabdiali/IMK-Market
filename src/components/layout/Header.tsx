@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 const baseNavItems = [
   { label: "Home", href: "/" },
   { label: "Solutions", href: "/solutions" },
+  { label: "Protections", href: "/protections" },
   { label: "Partners", href: "/partners" },
   { label: "Category", href: "/products" },
   { label: "Market Prices", href: "/market-prices" },

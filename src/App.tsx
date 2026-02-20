@@ -26,6 +26,7 @@ import Suppliers from "./pages/Suppliers";
 import Manufacturers from "./pages/Manufacturers";
 import ShippingInfo from "./pages/ShippingInfo";
 import ReturnsRefunds from "./pages/ReturnsRefunds";
+import Protections from "./pages/Protections";
 
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -71,6 +72,7 @@ const App = () => (
                 <Route path="/manufacturers" element={<Manufacturers />} />
                 <Route path="/shipping" element={<ShippingInfo />} />
                 <Route path="/returns" element={<ReturnsRefunds />} />
+                <Route path="/protections" element={<Protections />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/sell" element={<Sell />} />
