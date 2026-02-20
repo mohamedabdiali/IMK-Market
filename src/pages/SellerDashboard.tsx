@@ -30,6 +30,8 @@ interface Product {
     status: string;
     categoryId: string;
     images: string[];
+    image?: string;
+    videos?: string[];
     category: { name: string };
 }
 
@@ -45,9 +47,13 @@ interface ProductFormData {
     stock: number;
     categoryId: string;
     images: string[];
+    videos: string[];
 }
 
 const IMAGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
+const VIDEO_MAX_FILE_SIZE = 12 * 1024 * 1024;
+const VIDEO_MAX_DURATION_SECONDS = 25;
+const MAX_PRODUCT_VIDEOS = 2;
 
 export default function SellerDashboard() {
     const { token } = useAuth();
@@ -262,8 +268,10 @@ function ProductDialog({
         stock: 0,
         categoryId: "",
         images: [],
+        videos: [],
     });
     const [isImageProcessing, setIsImageProcessing] = useState(false);
+    const [isVideoProcessing, setIsVideoProcessing] = useState(false);
 
     // Reset/Sync form data when product changes or dialog opens
     useEffect(() => {
@@ -276,6 +284,7 @@ function ProductDialog({
                     stock: product.stock || 0,
                     categoryId: product.categoryId || "",
                     images: product.images && product.images.length > 0 ? product.images : product.image ? [product.image] : [],
+                    videos: product.videos && product.videos.length > 0 ? product.videos : [],
                 });
             } else {
                 setFormData({
@@ -285,6 +294,7 @@ function ProductDialog({
                     stock: 0,
                     categoryId: "",
                     images: [],
+                    videos: [],
                 });
             }
         }
@@ -296,6 +306,23 @@ function ProductDialog({
             reader.onload = () => resolve(reader.result as string);
             reader.onerror = () => reject(new Error("Unable to read image file."));
             reader.readAsDataURL(file);
+        });
+
+    const readVideoDuration = (file: File) =>
+        new Promise<number>((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const video = document.createElement("video");
+            video.preload = "metadata";
+            video.onloadedmetadata = () => {
+                const duration = Number.isFinite(video.duration) ? video.duration : 0;
+                URL.revokeObjectURL(url);
+                resolve(duration);
+            };
+            video.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error("Unable to read video metadata."));
+            };
+            video.src = url;
         });
 
     const handleImagesUpload = async (files?: FileList | null) => {
@@ -325,8 +352,49 @@ function ProductDialog({
         }
     };
 
+    const handleVideosUpload = async (files?: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const remainingSlots = MAX_PRODUCT_VIDEOS - formData.videos.length;
+        if (remainingSlots <= 0) {
+            toast.error(`Each product can have up to ${MAX_PRODUCT_VIDEOS} videos.`);
+            return;
+        }
+        setIsVideoProcessing(true);
+        try {
+            const selectedFiles = Array.from(files).slice(0, remainingSlots);
+            const processed: string[] = [];
+            for (const file of selectedFiles) {
+                if (!file.type.startsWith("video/")) {
+                    toast.error("Please upload only video files.");
+                    continue;
+                }
+                if (file.size > VIDEO_MAX_FILE_SIZE) {
+                    toast.error("Each video must be smaller than 12MB.");
+                    continue;
+                }
+                const duration = await readVideoDuration(file);
+                if (duration > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+                    toast.error(`Videos must be ${VIDEO_MAX_DURATION_SECONDS} seconds or less.`);
+                    continue;
+                }
+                processed.push(await readFileAsDataUrl(file));
+            }
+            if (processed.length > 0) {
+                setFormData((prev) => ({ ...prev, videos: [...prev.videos, ...processed] }));
+            }
+        } catch {
+            toast.error("Video upload failed. Please try again.");
+        } finally {
+            setIsVideoProcessing(false);
+        }
+    };
+
     const removeImage = (index: number) => {
         setFormData((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+    };
+
+    const removeVideo = (index: number) => {
+        setFormData((prev) => ({ ...prev, videos: prev.videos.filter((_, i) => i !== index) }));
     };
 
     const mutation = useMutation({
@@ -347,11 +415,15 @@ function ProductDialog({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        if (isVideoProcessing || isImageProcessing) {
+            toast.error("Please wait for media uploads to finish.");
+            return;
+        }
         if (!formData.images || formData.images.length === 0) {
             toast.error("Please upload at least one product image.");
             return;
         }
-        mutation.mutate({ ...formData, images: formData.images });
+        mutation.mutate({ ...formData, images: formData.images, videos: formData.videos });
     };
 
     return (
@@ -456,9 +528,51 @@ function ProductDialog({
                             </div>
                         )}
                     </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="product-videos">Product Videos</Label>
+                        <Input
+                            id="product-videos"
+                            type="file"
+                            accept="video/*"
+                            multiple
+                            onChange={(e) => handleVideosUpload(e.target.files)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            {formData.videos.length}/{MAX_PRODUCT_VIDEOS} videos - max {VIDEO_MAX_DURATION_SECONDS}s each
+                        </p>
+                        {isVideoProcessing && (
+                            <p className="text-xs text-muted-foreground">Processing videos...</p>
+                        )}
+                        {formData.videos.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {formData.videos.map((video, idx) => (
+                                    <div
+                                        key={`${video}-${idx}`}
+                                        className="relative h-24 overflow-hidden rounded-md border border-border"
+                                    >
+                                        <video
+                                            src={video}
+                                            className="h-full w-full object-cover"
+                                            controls
+                                            muted
+                                            playsInline
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute right-2 top-2 rounded bg-background/80 px-1 text-xs text-foreground shadow"
+                                            onClick={() => removeVideo(idx)}
+                                            aria-label="Remove video"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                            Cancel
+                            Exit
                         </Button>
                         <Button type="submit" disabled={mutation.isPending}>
                             {mutation.isPending ? "Saving..." : product ? "Update" : "Create"}

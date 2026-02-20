@@ -61,7 +61,7 @@ app.use(
 // Capture raw body for webhook signature verification
 app.use(
   express.json({
-    limit: "10mb",
+    limit: "25mb",
     verify: (req: RequestWithRawBody, _res, buf: Buffer) => {
       req.rawBody = buf;
     },
@@ -919,6 +919,7 @@ app.get("/api/products", async (req, res) => {
         originalPrice: product.originalPrice,
         image: product.image,
         images: product.images?.length ? product.images : [product.image],
+        videos: product.videos ?? [],
         category: categoryMap.get(product.categoryId) || "Uncategorized",
         rating: product.rating,
         reviewCount: product.reviewCount,
@@ -955,6 +956,7 @@ app.get("/api/products/:id", async (req, res) => {
       originalPrice: product.originalPrice,
       image: product.image,
       images: product.images?.length ? product.images : [product.image],
+      videos: product.videos ?? [],
       category: category?.name || "Uncategorized",
       rating: product.rating,
       reviewCount: product.reviewCount,
@@ -2201,6 +2203,7 @@ app.get("/api/admin/products", requireAdmin, requirePermission("products", "view
         ...product,
         image: product.images?.length ? product.images[0] : product.image,
         images: product.images?.length ? product.images : [product.image],
+        videos: product.videos ?? [],
         sku: product.sku || `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
         stock: product.stock ?? 0,
         lowStockThreshold: product.lowStockThreshold ?? 10,
@@ -2219,7 +2222,11 @@ app.post("/api/admin/products", requireAdmin, requirePermission("products", "cre
   const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
     message: "Image must be a URL or data URI",
   });
+  const videoSchema = z.string().min(1).refine((val) => isValidVideoMedia(val), {
+    message: "Video must be a URL or data URI",
+  });
   const imagesSchema = z.array(imageSchema).min(1).max(10);
+  const videosSchema = z.array(videoSchema).max(2);
   const schema = z
     .object({
       name: z.string().min(1),
@@ -2229,6 +2236,7 @@ app.post("/api/admin/products", requireAdmin, requirePermission("products", "cre
       category: z.string().min(1),
       image: imageSchema.optional(),
       images: imagesSchema.optional(),
+      videos: videosSchema.optional(),
       rating: z.number().min(0).max(5).optional(),
       reviewCount: z.number().int().min(0).optional(),
       inStock: z.boolean().optional(),
@@ -2260,6 +2268,7 @@ app.post("/api/admin/products", requireAdmin, requirePermission("products", "cre
     const createdAt = new Date();
     const stock = parsed.data.stock ?? 0;
     const images = parsed.data.images ?? (parsed.data.image ? [parsed.data.image] : []);
+    const videos = parsed.data.videos ?? [];
     const sku = parsed.data.sku ?? `IMK-${Math.floor(Math.random() * 9000 + 1000)}`;
     const tenantId = tenantFilter.tenantId ?? parsed.data.tenantId;
     const product = await prisma.product.create({
@@ -2270,6 +2279,7 @@ app.post("/api/admin/products", requireAdmin, requirePermission("products", "cre
         originalPrice: parsed.data.originalPrice ?? undefined,
         image: images[0],
         images,
+        videos,
         categoryId: category.id,
         rating: parsed.data.rating ?? 4.5,
         reviewCount: parsed.data.reviewCount ?? 0,
@@ -2299,7 +2309,11 @@ app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products",
   const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
     message: "Image must be a URL or data URI",
   });
+  const videoSchema = z.string().min(1).refine((val) => isValidVideoMedia(val), {
+    message: "Video must be a URL or data URI",
+  });
   const imagesSchema = z.array(imageSchema).min(1).max(10);
+  const videosSchema = z.array(videoSchema).max(2);
   const schema = z.object({
     name: z.string().min(1).optional(),
     description: z.string().min(1).optional(),
@@ -2308,6 +2322,7 @@ app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products",
     category: z.string().min(1).optional(),
     image: imageSchema.optional(),
     images: imagesSchema.optional(),
+    videos: videosSchema.optional(),
     rating: z.number().min(0).max(5).optional(),
     reviewCount: z.number().int().min(0).optional(),
     inStock: z.boolean().optional(),
@@ -2334,7 +2349,7 @@ app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products",
       },
     });
     if (!existing) return res.status(404).json({ error: "Not found" });
-    const { category, images, image, ...rest } = parsed.data;
+    const { category, images, image, videos, ...rest } = parsed.data;
     const updateData: Prisma.ProductUncheckedUpdateInput = { ...rest };
     if (category) {
       const ensured = await ensureCategory(category);
@@ -2347,6 +2362,9 @@ app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products",
       const existingImages = existing.images?.length ? existing.images : [existing.image];
       updateData.images = [image, ...existingImages.slice(1)];
       updateData.image = image;
+    }
+    if (videos !== undefined) {
+      updateData.videos = videos;
     }
     if (parsed.data.stock !== undefined) {
       updateData.inStock = parsed.data.stock > 0;

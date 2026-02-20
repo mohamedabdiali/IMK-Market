@@ -42,6 +42,7 @@ const emptyForm = {
   freeShipping: false,
   inStock: true,
   images: [] as string[],
+  videos: [] as string[],
   stock: "",
   lowStockThreshold: "10",
   sellerName: "",
@@ -49,6 +50,10 @@ const emptyForm = {
   country: "",
   status: "active",
 };
+
+const VIDEO_MAX_FILE_SIZE = 12 * 1024 * 1024;
+const VIDEO_MAX_DURATION_SECONDS = 25;
+const MAX_PRODUCT_VIDEOS = 2;
 
 export default function AdminProductManagement() {
   const { token } = useAuth();
@@ -64,6 +69,7 @@ export default function AdminProductManagement() {
   const [form, setForm] = useState({ ...emptyForm });
   const [editing, setEditing] = useState<ProductManagementItem | null>(null);
   const [isImageProcessing, setIsImageProcessing] = useState(false);
+  const [isVideoProcessing, setIsVideoProcessing] = useState(false);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["admin-products"],
@@ -209,6 +215,23 @@ export default function AdminProductManagement() {
       reader.readAsDataURL(file);
     });
 
+  const readVideoDuration = (file: File) =>
+    new Promise<number>((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        URL.revokeObjectURL(url);
+        resolve(duration);
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Unable to read video metadata."));
+      };
+      video.src = url;
+    });
+
   const prepareImage = async (file: File) => {
     const dataUrl = await readFileAsDataUrl(file);
     const img = new Image();
@@ -236,6 +259,7 @@ export default function AdminProductManagement() {
     const trimmedCategory = form.category.trim();
     const normalizedPrice = Number.parseFloat(form.price);
     const normalizedImages = form.images.map((img) => img.trim()).filter(Boolean);
+    const normalizedVideos = form.videos.map((video) => video.trim()).filter(Boolean);
     const missing: string[] = [];
 
     if (!trimmedName) missing.push("name");
@@ -244,6 +268,7 @@ export default function AdminProductManagement() {
     if (normalizedImages.length === 0) missing.push("images");
     if (!Number.isFinite(normalizedPrice)) missing.push("price");
     if (normalizedImages.length > 10) missing.push("max 10 images");
+    if (normalizedVideos.length > MAX_PRODUCT_VIDEOS) missing.push(`max ${MAX_PRODUCT_VIDEOS} videos`);
 
     if (missing.length > 0) {
       toast({
@@ -253,10 +278,10 @@ export default function AdminProductManagement() {
       });
       return;
     }
-    if (isImageProcessing) {
+    if (isImageProcessing || isVideoProcessing) {
       toast({
-        title: "Image still processing",
-        description: "Please wait a moment for the image to finish uploading.",
+        title: "Media still processing",
+        description: "Please wait a moment for uploads to finish.",
         variant: "destructive",
       });
       return;
@@ -270,6 +295,15 @@ export default function AdminProductManagement() {
       });
       return;
     }
+    const invalidVideo = normalizedVideos.find((video) => !(video.startsWith("data:") || video.startsWith("http")));
+    if (invalidVideo) {
+      toast({
+        title: "Invalid video",
+        description: "Videos must be valid uploaded media.",
+        variant: "destructive",
+      });
+      return;
+    }
     createMutation.mutate({
       name: trimmedName,
       description: trimmedDescription,
@@ -279,6 +313,7 @@ export default function AdminProductManagement() {
         : undefined,
       category: trimmedCategory,
       images: normalizedImages,
+      videos: normalizedVideos,
       sku: form.sku.trim() ? form.sku.trim() : undefined,
       badge: form.badge.trim() ? form.badge.trim() : undefined,
       rating: form.rating.trim().length ? Number.parseFloat(form.rating) : undefined,
@@ -360,6 +395,114 @@ export default function AdminProductManagement() {
     }
   };
 
+  const handleVideosUpload = async (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const remainingSlots = MAX_PRODUCT_VIDEOS - form.videos.length;
+    if (remainingSlots <= 0) {
+      toast({
+        title: "Video limit reached",
+        description: `Each product can have up to ${MAX_PRODUCT_VIDEOS} videos.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsVideoProcessing(true);
+    try {
+      const selectedFiles = Array.from(files).slice(0, remainingSlots);
+      const processed: string[] = [];
+      for (const file of selectedFiles) {
+        if (!file.type.startsWith("video/")) {
+          toast({ title: "Invalid video", description: "Upload a valid video file.", variant: "destructive" });
+          continue;
+        }
+        if (file.size > VIDEO_MAX_FILE_SIZE) {
+          toast({
+            title: "Video too large",
+            description: "Each video must be smaller than 12MB.",
+            variant: "destructive",
+          });
+          continue;
+        }
+        const duration = await readVideoDuration(file);
+        if (duration > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+          toast({
+            title: "Video too long",
+            description: `Videos must be ${VIDEO_MAX_DURATION_SECONDS} seconds or less.`,
+            variant: "destructive",
+          });
+          continue;
+        }
+        processed.push(await readFileAsDataUrl(file));
+      }
+      if (processed.length > 0) {
+        setForm((prev) => ({ ...prev, videos: [...prev.videos, ...processed] }));
+      }
+    } catch (error) {
+      toast({
+        title: "Video upload failed",
+        description: error instanceof Error ? error.message : "Please try another video.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVideoProcessing(false);
+    }
+  };
+
+  const handleEditVideosUpload = async (files?: FileList | null) => {
+    if (!files || files.length === 0 || !editing) return;
+    const currentVideos = editing.videos?.length ? editing.videos : [];
+    const remainingSlots = MAX_PRODUCT_VIDEOS - currentVideos.length;
+    if (remainingSlots <= 0) {
+      toast({
+        title: "Video limit reached",
+        description: `Each product can have up to ${MAX_PRODUCT_VIDEOS} videos.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsVideoProcessing(true);
+    try {
+      const selectedFiles = Array.from(files).slice(0, remainingSlots);
+      const processed: string[] = [];
+      for (const file of selectedFiles) {
+        if (!file.type.startsWith("video/")) {
+          toast({ title: "Invalid video", description: "Upload a valid video file.", variant: "destructive" });
+          continue;
+        }
+        if (file.size > VIDEO_MAX_FILE_SIZE) {
+          toast({
+            title: "Video too large",
+            description: "Each video must be smaller than 12MB.",
+            variant: "destructive",
+          });
+          continue;
+        }
+        const duration = await readVideoDuration(file);
+        if (duration > VIDEO_MAX_DURATION_SECONDS + 0.5) {
+          toast({
+            title: "Video too long",
+            description: `Videos must be ${VIDEO_MAX_DURATION_SECONDS} seconds or less.`,
+            variant: "destructive",
+          });
+          continue;
+        }
+        processed.push(await readFileAsDataUrl(file));
+      }
+      if (processed.length > 0) {
+        const nextVideos = [...currentVideos, ...processed];
+        setEditing((prev) => (prev ? { ...prev, videos: nextVideos } : prev));
+      }
+    } catch (error) {
+      toast({
+        title: "Video upload failed",
+        description: error instanceof Error ? error.message : "Please try another video.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVideoProcessing(false);
+    }
+  };
+
 
   const setCreateCoverImage = (index: number) => {
     setForm((prev) => {
@@ -373,6 +516,10 @@ export default function AdminProductManagement() {
 
   const removeCreateImage = (index: number) => {
     setForm((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  };
+
+  const removeCreateVideo = (index: number) => {
+    setForm((prev) => ({ ...prev, videos: prev.videos.filter((_, i) => i !== index) }));
   };
 
 
@@ -405,11 +552,32 @@ export default function AdminProductManagement() {
     });
   };
 
+  const removeEditVideo = (index: number) => {
+    setEditing((prev) => {
+      if (!prev) return prev;
+      const currentVideos = prev.videos?.length ? prev.videos : [];
+      const nextVideos = currentVideos.filter((_, i) => i !== index);
+      return { ...prev, videos: nextVideos };
+    });
+  };
+
   const handleUpdate = () => {
     if (!editing) return;
+    if (isVideoProcessing || isImageProcessing) {
+      toast({
+        title: "Media still processing",
+        description: "Please wait for uploads to finish before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
     const normalizedImages = (editing.images?.length ? editing.images : [editing.image])
       .map((img) => img.trim())
       .filter(Boolean);
+    const normalizedVideos = (editing.videos?.length ? editing.videos : [])
+      .map((video) => video.trim())
+      .filter(Boolean);
+
     if (!editing.name.trim() || !editing.description.trim() || !editing.category.trim()) {
       toast({
         title: "Missing required fields",
@@ -421,20 +589,37 @@ export default function AdminProductManagement() {
     if (normalizedImages.length === 0 || normalizedImages.length > 10) {
       toast({
         title: "Invalid images",
-        description: "Each product must have 1–10 images.",
+        description: "Each product must have 1-10 images.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (normalizedVideos.length > MAX_PRODUCT_VIDEOS) {
+      toast({
+        title: "Invalid videos",
+        description: `Each product can have up to ${MAX_PRODUCT_VIDEOS} videos.`,
         variant: "destructive",
       });
       return;
     }
     const invalidImage = normalizedImages.find((img) => !(img.startsWith("data:") || img.startsWith("http")));
-      if (invalidImage) {
-        toast({
-          title: "Invalid image",
-          description: "Images must be valid uploaded media.",
-          variant: "destructive",
-        });
-        return;
-      }
+    if (invalidImage) {
+      toast({
+        title: "Invalid image",
+        description: "Images must be valid uploaded media.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const invalidVideo = normalizedVideos.find((video) => !(video.startsWith("data:") || video.startsWith("http")));
+    if (invalidVideo) {
+      toast({
+        title: "Invalid video",
+        description: "Videos must be valid uploaded media.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (Number.isNaN(Number(editing.price))) {
       toast({
         title: "Invalid price",
@@ -458,6 +643,7 @@ export default function AdminProductManagement() {
         freeShipping: editing.freeShipping === undefined ? undefined : editing.freeShipping,
         inStock: editing.inStock === undefined ? undefined : editing.inStock,
         images: normalizedImages,
+        videos: normalizedVideos,
         stock: editing.stock,
         lowStockThreshold: editing.lowStockThreshold,
         sellerName: editing.sellerName === undefined ? undefined : editing.sellerName,
@@ -606,6 +792,7 @@ export default function AdminProductManagement() {
                             ...product,
                             image: normalizedImages[0] ?? product.image,
                             images: normalizedImages,
+                            videos: product.videos ?? [],
                             badge: product.badge ?? null,
                             sellerName: product.sellerName ?? null,
                             sellerEmail: product.sellerEmail ?? null,
@@ -638,173 +825,212 @@ export default function AdminProductManagement() {
           setShowForm(open);
           if (!open) {
             setForm({ ...emptyForm });
-            setImageUrl("");
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+        <DialogContent className="flex flex-col h-[92vh] w-[96vw] max-w-6xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>Add New Product</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              placeholder="Product name"
-              value={form.name}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-            <Input
-              placeholder="SKU (optional)"
-              value={form.sku}
-              onChange={(e) => setForm((prev) => ({ ...prev, sku: e.target.value }))}
-            />
-            <Input
-              placeholder="Price"
-              type="number"
-              value={form.price}
-              onChange={(e) => setForm((prev) => ({ ...prev, price: e.target.value }))}
-            />
-            <Input
-              placeholder="Original price (optional)"
-              type="number"
-              value={form.originalPrice}
-              onChange={(e) => setForm((prev) => ({ ...prev, originalPrice: e.target.value }))}
-            />
-            <Select value={form.category} onValueChange={(value) => setForm((prev) => ({ ...prev, category: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                {(categories as CategoryItem[]).map((category) => (
-                  <SelectItem key={category.id} value={category.name}>
-                    {category.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="Stock"
-              type="number"
-              value={form.stock}
-              onChange={(e) => setForm((prev) => ({ ...prev, stock: e.target.value }))}
-            />
-            <Input
-              placeholder="Low stock threshold"
-              type="number"
-              value={form.lowStockThreshold}
-              onChange={(e) => setForm((prev) => ({ ...prev, lowStockThreshold: e.target.value }))}
-            />
-            <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
-              <Label htmlFor="create-free-shipping">Free shipping</Label>
-              <Switch
-                id="create-free-shipping"
-                checked={form.freeShipping}
-                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, freeShipping: checked }))}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                placeholder="Product name"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
               />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
-              <Label htmlFor="create-in-stock">In stock</Label>
-              <Switch
-                id="create-in-stock"
-                checked={form.inStock}
-                onCheckedChange={(checked) => setForm((prev) => ({ ...prev, inStock: checked }))}
+              <Input
+                placeholder="SKU (optional)"
+                value={form.sku}
+                onChange={(e) => setForm((prev) => ({ ...prev, sku: e.target.value }))}
               />
-            </div>
-            <Input
-              placeholder="Badge (optional)"
-              value={form.badge}
-              onChange={(e) => setForm((prev) => ({ ...prev, badge: e.target.value }))}
-            />
-            <Input
-              placeholder="Rating (0–5)"
-              type="number"
-              step="0.1"
-              value={form.rating}
-              onChange={(e) => setForm((prev) => ({ ...prev, rating: e.target.value }))}
-            />
-            <Input
-              placeholder="Review count"
-              type="number"
-              value={form.reviewCount}
-              onChange={(e) => setForm((prev) => ({ ...prev, reviewCount: e.target.value }))}
-            />
-            <Input
-              placeholder="Seller name"
-              value={form.sellerName}
-              onChange={(e) => setForm((prev) => ({ ...prev, sellerName: e.target.value }))}
-            />
-            <Input
-              placeholder="Seller email"
-              value={form.sellerEmail}
-              onChange={(e) => setForm((prev) => ({ ...prev, sellerEmail: e.target.value }))}
-            />
-            <Input
-              placeholder="Country"
-              value={form.country}
-              onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))}
-            />
-          </div>
-          <div className="mt-4 space-y-3">
-            <div className="space-y-2">
-              <Input type="file" accept="image/*" multiple onChange={(e) => handleImagesUpload(e.target.files)} />
-              <p className="text-xs text-muted-foreground">
-                {form.images.length}/10 images • click a thumbnail to set cover
-              </p>
-            </div>
-            {isImageProcessing && (
-              <p className="text-xs text-muted-foreground">Processing images...</p>
-            )}
-            {form.images.length > 0 && (
-              <div className="grid grid-cols-5 gap-2">
-                {form.images.map((img, idx) => (
-                  <div
-                    key={`${img}-${idx}`}
-                    className="relative h-16 w-16 overflow-hidden rounded-md border border-border cursor-pointer"
-                    onClick={() => setCreateCoverImage(idx)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <img src={img} alt={`Product image ${idx + 1}`} className="h-full w-full object-cover" />
-                    {idx === 0 && (
-                      <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                        Cover
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className="absolute right-1 top-1 rounded bg-background/80 px-1 text-xs text-foreground shadow"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeCreateImage(idx);
-                      }}
-                      aria-label="Remove image"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+              <Input
+                placeholder="Price"
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm((prev) => ({ ...prev, price: e.target.value }))}
+              />
+              <Input
+                placeholder="Original price (optional)"
+                type="number"
+                value={form.originalPrice}
+                onChange={(e) => setForm((prev) => ({ ...prev, originalPrice: e.target.value }))}
+              />
+              <Select value={form.category} onValueChange={(value) => setForm((prev) => ({ ...prev, category: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(categories as CategoryItem[]).map((category) => (
+                    <SelectItem key={category.id} value={category.name}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={form.status} onValueChange={(value) => setForm((prev) => ({ ...prev, status: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Stock"
+                type="number"
+                value={form.stock}
+                onChange={(e) => setForm((prev) => ({ ...prev, stock: e.target.value }))}
+              />
+              <Input
+                placeholder="Low stock threshold"
+                type="number"
+                value={form.lowStockThreshold}
+                onChange={(e) => setForm((prev) => ({ ...prev, lowStockThreshold: e.target.value }))}
+              />
+              <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
+                <Label htmlFor="create-free-shipping">Free shipping</Label>
+                <Switch
+                  id="create-free-shipping"
+                  checked={form.freeShipping}
+                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, freeShipping: checked }))}
+                />
               </div>
-            )}
+              <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
+                <Label htmlFor="create-in-stock">In stock</Label>
+                <Switch
+                  id="create-in-stock"
+                  checked={form.inStock}
+                  onCheckedChange={(checked) => setForm((prev) => ({ ...prev, inStock: checked }))}
+                />
+              </div>
+              <Input
+                placeholder="Badge (optional)"
+                value={form.badge}
+                onChange={(e) => setForm((prev) => ({ ...prev, badge: e.target.value }))}
+              />
+              <Input
+                placeholder="Rating (0-5)"
+                type="number"
+                step="0.1"
+                value={form.rating}
+                onChange={(e) => setForm((prev) => ({ ...prev, rating: e.target.value }))}
+              />
+              <Input
+                placeholder="Review count"
+                type="number"
+                value={form.reviewCount}
+                onChange={(e) => setForm((prev) => ({ ...prev, reviewCount: e.target.value }))}
+              />
+              <Input
+                placeholder="Seller name"
+                value={form.sellerName}
+                onChange={(e) => setForm((prev) => ({ ...prev, sellerName: e.target.value }))}
+              />
+              <Input
+                placeholder="Seller email"
+                value={form.sellerEmail}
+                onChange={(e) => setForm((prev) => ({ ...prev, sellerEmail: e.target.value }))}
+              />
+              <Input
+                placeholder="Country"
+                value={form.country}
+                onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Input type="file" accept="image/*" multiple onChange={(e) => handleImagesUpload(e.target.files)} />
+                <p className="text-xs text-muted-foreground">
+                  {form.images.length}/10 images - click a thumbnail to set cover
+                </p>
+              </div>
+              {isImageProcessing && (
+                <p className="text-xs text-muted-foreground">Processing images...</p>
+              )}
+              {form.images.length > 0 && (
+                <div className="grid grid-cols-5 gap-2">
+                  {form.images.map((img, idx) => (
+                    <div
+                      key={`${img}-${idx}`}
+                      className="relative h-16 w-16 overflow-hidden rounded-md border border-border cursor-pointer"
+                      onClick={() => setCreateCoverImage(idx)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <img src={img} alt={`Product image ${idx + 1}`} className="h-full w-full object-cover" />
+                      {idx === 0 && (
+                        <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                          Cover
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 rounded bg-background/80 px-1 text-xs text-foreground shadow"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeCreateImage(idx);
+                        }}
+                        aria-label="Remove image"
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Input type="file" accept="video/*" multiple onChange={(e) => handleVideosUpload(e.target.files)} />
+                <p className="text-xs text-muted-foreground">
+                  {form.videos.length}/{MAX_PRODUCT_VIDEOS} videos - max {VIDEO_MAX_DURATION_SECONDS}s each
+                </p>
+              </div>
+              {isVideoProcessing && (
+                <p className="text-xs text-muted-foreground">Processing videos...</p>
+              )}
+              {form.videos.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {form.videos.map((video, idx) => (
+                    <div
+                      key={`${video}-${idx}`}
+                      className="relative h-24 overflow-hidden rounded-md border border-border"
+                    >
+                      <video
+                        src={video}
+                        className="h-full w-full object-cover"
+                        controls
+                        muted
+                        playsInline
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 rounded bg-background/80 px-1 text-xs text-foreground shadow"
+                        onClick={() => removeCreateVideo(idx)}
+                        aria-label="Remove video"
+                      >
+                        ?
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Textarea
+              placeholder="Description"
+              value={form.description}
+              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              className="min-h-[120px]"
+              rows={4}
+            />
           </div>
-          <Textarea
-            placeholder="Description"
-            value={form.description}
-            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-            className="mt-4"
-            rows={4}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!canCreate || isImageProcessing || createMutation.isPending}>
-              {isImageProcessing ? "Processing..." : createMutation.isPending ? "Creating..." : "Create"}
+          <DialogFooter className="border-t px-6 py-4">
+            <Button variant="outline" onClick={() => setShowForm(false)}>Exit</Button>
+            <Button onClick={handleCreate} disabled={!canCreate || isImageProcessing || isVideoProcessing || createMutation.isPending}>
+              {isImageProcessing || isVideoProcessing ? "Processing..." : createMutation.isPending ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -818,12 +1044,12 @@ export default function AdminProductManagement() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+        <DialogContent className="flex flex-col h-[92vh] w-[96vw] max-w-6xl overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>Edit Product</DialogTitle>
           </DialogHeader>
           {editing && (
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
                 <Input value={editing.sku} onChange={(e) => setEditing({ ...editing, sku: e.target.value })} />
@@ -901,7 +1127,7 @@ export default function AdminProductManagement() {
                   }
                 />
                 <Input
-                  placeholder="Rating (0–5)"
+                  placeholder="Rating (0-5)"
                   type="number"
                   step="0.1"
                   value={editing.rating ?? ""}
@@ -950,11 +1176,11 @@ export default function AdminProductManagement() {
                 />
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Input type="file" accept="image/*" multiple onChange={(e) => handleEditImagesUpload(e.target.files)} />
                   <p className="text-xs text-muted-foreground">
-                    {(editing.images?.length ? editing.images : [editing.image]).filter(Boolean).length}/10 images • click a thumbnail to set cover
+                    {(editing.images?.length ? editing.images : [editing.image]).filter(Boolean).length}/10 images - click a thumbnail to set cover
                   </p>
                 </div>
                 {isImageProcessing && (
@@ -986,11 +1212,47 @@ export default function AdminProductManagement() {
                           }}
                           aria-label="Remove image"
                         >
-                          ×
+                          X
                         </button>
                       </div>
                     ))}
                 </div>
+
+                <div className="space-y-2">
+                  <Input type="file" accept="video/*" multiple onChange={(e) => handleEditVideosUpload(e.target.files)} />
+                  <p className="text-xs text-muted-foreground">
+                    {(editing.videos?.length ?? 0)}/{MAX_PRODUCT_VIDEOS} videos - max {VIDEO_MAX_DURATION_SECONDS}s each
+                  </p>
+                </div>
+                {isVideoProcessing && (
+                  <p className="text-xs text-muted-foreground">Processing videos...</p>
+                )}
+                {editing.videos && editing.videos.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {editing.videos.map((video, idx) => (
+                      <div
+                        key={`${video}-${idx}`}
+                        className="relative h-24 overflow-hidden rounded-md border border-border"
+                      >
+                        <video
+                          src={video}
+                          className="h-full w-full object-cover"
+                          controls
+                          muted
+                          playsInline
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-2 rounded bg-background/80 px-1 text-xs text-foreground shadow"
+                          onClick={() => removeEditVideo(idx)}
+                          aria-label="Remove video"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <Textarea
@@ -1001,8 +1263,8 @@ export default function AdminProductManagement() {
               />
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+          <DialogFooter className="border-t px-6 py-4">
+            <Button variant="outline" onClick={() => setEditing(null)}>Exit</Button>
             <Button onClick={handleUpdate}>Save</Button>
           </DialogFooter>
         </DialogContent>

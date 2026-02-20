@@ -6,6 +6,7 @@ export interface Product {
   originalPrice?: number;
   image: string;
   images?: string[];
+  videos?: string[];
   category: string;
   rating: number;
   reviewCount: number;

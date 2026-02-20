@@ -401,6 +401,7 @@ const generateProducts = () => {
       originalPrice: originalPrice && originalPrice > price ? originalPrice : undefined,
       image,
       images,
+      videos: [],
       categoryId: category.id,
       rating,
       reviewCount: 20 + ((index * 37) % 680),
@@ -465,6 +466,7 @@ const toPublicProduct = (p, req) => ({
   originalPrice: p.originalPrice,
   image: toPublicMediaUrl(req, p.image),
   images: (p.images && p.images.length > 0 ? p.images : [p.image]).map((image) => toPublicMediaUrl(req, image)),
+  videos: (p.videos && p.videos.length > 0 ? p.videos : []).map((video) => toPublicMediaUrl(req, video)),
   category: getCategoryName(p.categoryId),
   rating: p.rating,
   reviewCount: p.reviewCount,
@@ -479,6 +481,7 @@ const toAdminProduct = (product, req) => ({
   images: (product.images && product.images.length ? product.images : [product.image]).map((image) =>
     toPublicMediaUrl(req, image)
   ),
+  videos: (product.videos && product.videos.length ? product.videos : []).map((video) => toPublicMediaUrl(req, video)),
   sku: product.sku || `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
   stock: product.stock ?? 0,
   lowStockThreshold: product.lowStockThreshold ?? 10,
@@ -2172,6 +2175,11 @@ app.post('/api/admin/products', requireAdmin, (req, res) => {
     .map((img) => (img || '').toString())
     .filter((img) => img.startsWith('http') || img.startsWith('data:'))
     .slice(0, 10);
+  const videos = Array.isArray(payload.videos) ? payload.videos : [];
+  const normalizedVideos = videos
+    .map((video) => (video || '').toString())
+    .filter((video) => isVideoPayload(video))
+    .slice(0, 2);
 
   const fieldErrors = {};
   if (!name) fieldErrors.name = ['Name is required'];
@@ -2198,6 +2206,7 @@ app.post('/api/admin/products', requireAdmin, (req, res) => {
     originalPrice: payload.originalPrice === null || payload.originalPrice === undefined ? undefined : Number(payload.originalPrice),
     image: normalizedImages[0],
     images: normalizedImages,
+    videos: normalizedVideos,
     categoryId: category ? category.id : ensureUncategorized().id,
     rating: Number.isFinite(Number(payload.rating)) ? Number(payload.rating) : 4.5,
     reviewCount: Number.isFinite(Number(payload.reviewCount)) ? Math.max(0, Math.floor(Number(payload.reviewCount))) : 0,
@@ -2253,6 +2262,14 @@ app.patch('/api/admin/products/:id', requireAdmin, (req, res) => {
       product.images = [img, ...existing.slice(1)];
       product.image = img;
     }
+  }
+
+  if (Array.isArray(payload.videos)) {
+    const normalizedVideos = payload.videos
+      .map((video) => (video || '').toString())
+      .filter((video) => isVideoPayload(video))
+      .slice(0, 2);
+    product.videos = normalizedVideos;
   }
 
   if (payload.rating !== undefined && Number.isFinite(Number(payload.rating))) product.rating = Number(payload.rating);

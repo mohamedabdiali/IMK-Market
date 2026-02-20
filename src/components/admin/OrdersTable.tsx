@@ -464,6 +464,11 @@ export function OrdersTable({ orders, onStatusChange, onTrackingUpdate, onApprov
                   </div>
                 </div>
               )}
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setSelectedOrder(null)}>
+                  Exit
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

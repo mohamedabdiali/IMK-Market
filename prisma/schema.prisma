@@ -309,6 +309,7 @@ model Product {
   originalPrice     Float?
   image             String
   images            String[]       @default([])
+  videos            String[]       @default([])
   categoryId        String
   category          Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   rating            Float          @default(4.5)

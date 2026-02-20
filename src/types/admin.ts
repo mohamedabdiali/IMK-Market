@@ -75,6 +75,7 @@ export interface ProductManagementItem {
   category: string;
   image: string;
   images?: string[];
+  videos?: string[];
   rating?: number;
   reviewCount?: number;
   inStock?: boolean;
