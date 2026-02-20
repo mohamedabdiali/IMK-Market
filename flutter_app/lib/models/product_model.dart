@@ -6,6 +6,7 @@ class Product {
   final String categoryId;
   final String sellerId;
   final List<String> images;
+  final List<String> videos;
   final int stock;
   final double rating;
   final DateTime createdAt;
@@ -19,6 +20,7 @@ class Product {
     required this.categoryId,
     required this.sellerId,
     required this.images,
+    required this.videos,
     required this.stock,
     this.rating = 0.0,
     required this.createdAt,
@@ -34,6 +36,7 @@ class Product {
       categoryId: doc['categoryId'] ?? '',
       sellerId: doc['sellerId'] ?? '',
       images: List<String>.from(doc['images'] ?? []),
+      videos: List<String>.from(doc['videos'] ?? []),
       stock: doc['stock'] ?? 0,
       rating: (doc['rating'] ?? 0).toDouble(),
       createdAt: doc['createdAt'] != null
@@ -54,6 +57,7 @@ class Product {
       'categoryId': categoryId,
       'sellerId': sellerId,
       'images': images,
+      'videos': videos,
       'stock': stock,
       'rating': rating,
       'createdAt': createdAt.toIso8601String(),

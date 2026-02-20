@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import '../models/product_model.dart';
 import '../models/review_model.dart';
 import '../providers/auth_provider.dart';
@@ -23,16 +25,46 @@ class _ProductDetailEnhancedState extends State<ProductDetailEnhanced> {
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _reviewController = TextEditingController();
 
+  VideoPlayerController? _videoPlayerController;
+  ChewieController? _chewieController;
+
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    if (widget.product.videos.isNotEmpty) {
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(widget.product.videos.first),
+      );
+      await _videoPlayerController!.initialize();
+      _chewieController = ChewieController(
+        videoPlayerController: _videoPlayerController!,
+        autoPlay: false,
+        looping: false,
+        aspectRatio: _videoPlayerController!.value.aspectRatio,
+        errorBuilder: (context, errorMessage) {
+          return Center(
+            child: Text(
+              errorMessage,
+              style: const TextStyle(color: Colors.white),
+            ),
+          );
+        },
+      );
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _reviewController.dispose();
+    _videoPlayerController?.dispose();
+    _chewieController?.dispose();
     super.dispose();
   }
 
@@ -167,53 +199,90 @@ class _ProductDetailEnhancedState extends State<ProductDetailEnhanced> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image carousel
-            if (widget.product.images.isNotEmpty) ...[
-              SizedBox(
-                height: 300,
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() => _currentImageIndex = index);
-                  },
-                  itemCount: widget.product.images.length,
-                  itemBuilder: (context, index) {
-                    return Image.network(
-                      widget.product.images[index],
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          const Icon(Icons.image_not_supported),
-                    );
-                  },
-                ),
-              ),
-              // Image indicators
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    widget.product.images.length,
-                    (index) => Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: _currentImageIndex == index ? 12 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _currentImageIndex == index
-                            ? Colors.blue
-                            : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(4),
+            // Image and Video Section
+            Stack(
+              children: [
+                Column(
+                  children: [
+                    if (widget.product.images.isNotEmpty) ...[
+                      SizedBox(
+                        height: 300,
+                        child: PageView.builder(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() => _currentImageIndex = index);
+                          },
+                          itemCount: widget.product.images.length,
+                          itemBuilder: (context, index) {
+                            return Image.network(
+                              widget.product.images[index],
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  const Icon(Icons.image_not_supported),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ),
+                      // Image indicators
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(
+                            widget.product.images.length,
+                            (index) => Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              width: _currentImageIndex == index ? 12 : 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _currentImageIndex == index
+                                    ? Colors.blue
+                                    : Colors.grey[300],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ] else
+                      Container(
+                        height: 300,
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.image_not_supported, size: 50),
+                      ),
+
+                    // Video Player Section
+                    if (_chewieController != null &&
+                        _chewieController!
+                            .videoPlayerController
+                            .value
+                            .isInitialized)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Product Video',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            AspectRatio(
+                              aspectRatio:
+                                  _videoPlayerController!.value.aspectRatio,
+                              child: Chewie(controller: _chewieController!),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-            ] else
-              Container(
-                height: 300,
-                color: Colors.grey[300],
-                child: const Icon(Icons.image_not_supported),
-              ),
+              ],
+            ),
             // Product info
             Padding(
               padding: const EdgeInsets.all(16),
@@ -368,9 +437,9 @@ class _ProductDetailEnhancedState extends State<ProductDetailEnhanced> {
                           ? () async {
                               try {
                                 await context.read<CartProvider>().addProduct(
-                                      widget.product,
-                                      quantity: _quantity,
-                                    );
+                                  widget.product,
+                                  quantity: _quantity,
+                                );
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
