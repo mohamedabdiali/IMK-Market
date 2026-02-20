@@ -615,12 +615,23 @@ let emailHistory = [
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 app.get('/api/categories', (req, res) => {
-  const result = categories.map(c => ({ id: c.id, name: c.name, image: toPublicMediaUrl(req, c.image), productCount: products.filter(p => p.categoryId === c.id).length }));
+  const media = getCategoryMediaSetting();
+  const result = categories.map(c => ({
+    id: c.id,
+    name: c.name,
+    image: toPublicMediaUrl(req, c.image),
+    video: media[c.id] ? media[c.id].video : undefined,
+    productCount: products.filter(p => p.categoryId === c.id).length
+  }));
   res.json(result);
 });
 
 app.get('/api/flash-deals', (_req, res) => {
   res.json(getFlashDealsSetting());
+});
+
+app.get('/api/flash-ads', (_req, res) => {
+  res.json(getFlashAdsSetting());
 });
 
 app.get('/api/products', (req, res) => {
@@ -1414,6 +1425,34 @@ const defaultFlashDeals = {
   subtitle: 'Limited time offers - up to 30% off.',
   endsAt: null,
   productIds: [],
+  cards: [],
+};
+
+const defaultFlashAds = {
+  ads: [],
+};
+
+const normalizeFlashDealCards = (cards) => {
+  if (!Array.isArray(cards)) return [];
+  return cards
+    .map((entry) => {
+      const safe = entry && typeof entry === 'object' ? entry : {};
+      const mediaUrl = typeof safe.mediaUrl === 'string' ? safe.mediaUrl.trim() : '';
+      if (!mediaUrl) return null;
+      return {
+        id: typeof safe.id === 'string' && safe.id.trim().length ? safe.id.trim() : `promo-${createId('CARD', 3)}`,
+        title: typeof safe.title === 'string' && safe.title.trim().length ? safe.title.trim() : 'Flash Deal',
+        subtitle: typeof safe.subtitle === 'string' ? safe.subtitle.trim() : '',
+        badge: typeof safe.badge === 'string' ? safe.badge.trim() : '',
+        price: typeof safe.price === 'string' ? safe.price.trim() : '',
+        cta: typeof safe.cta === 'string' ? safe.cta.trim() : '',
+        mediaType: safe.mediaType === 'video' ? 'video' : 'image',
+        mediaUrl,
+        animation: ['none', 'pulse', 'float', 'zoom'].includes(safe.animation) ? safe.animation : 'none',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
 };
 
 const normalizeFlashDeals = (value) => {
@@ -1428,7 +1467,34 @@ const normalizeFlashDeals = (value) => {
   const productIds = Array.from(
     new Set(Array.isArray(safe.productIds) ? safe.productIds.map((id) => String(id).trim()).filter(Boolean) : [])
   );
-  return { title, subtitle, endsAt, productIds };
+  const cards = normalizeFlashDealCards(safe.cards);
+  return { title, subtitle, endsAt, productIds, cards };
+};
+
+const normalizeFlashAds = (value) => {
+  const safe = value && typeof value === 'object' ? value : {};
+  const rawAds = Array.isArray(safe.ads) ? safe.ads : [];
+  const ads = rawAds
+    .map((entry) => {
+      const ad = entry && typeof entry === 'object' ? entry : {};
+      const mediaUrl = typeof ad.mediaUrl === 'string' ? ad.mediaUrl.trim() : '';
+      if (!mediaUrl) return null;
+      return {
+        id: typeof ad.id === 'string' && ad.id.trim().length ? ad.id.trim() : `ad-${createId('AD', 3)}`,
+        slot: ad.slot === 'right' ? 'right' : 'left',
+        title: typeof ad.title === 'string' ? ad.title.trim() : '',
+        subtitle: typeof ad.subtitle === 'string' ? ad.subtitle.trim() : '',
+        text: typeof ad.text === 'string' ? ad.text.trim() : '',
+        badge: typeof ad.badge === 'string' ? ad.badge.trim() : '',
+        cta: typeof ad.cta === 'string' ? ad.cta.trim() : '',
+        mediaType: ad.mediaType === 'video' ? 'video' : 'image',
+        mediaUrl,
+        animation: ['none', 'pulse', 'float', 'zoom'].includes(ad.animation) ? ad.animation : 'none',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+  return { ads };
 };
 
 const getFlashDealsSetting = () => {
@@ -1446,6 +1512,57 @@ const setFlashDealsSetting = (payload) => {
   }
   mockSettings.unshift({ id: createId('SET', 3), key: 'flash_deals', value, updatedAt: nowIso() });
   return value;
+};
+
+const getFlashAdsSetting = () => {
+  const existing = mockSettings.find((setting) => setting.key === 'flash_ads');
+  return normalizeFlashAds(existing ? existing.value : defaultFlashAds);
+};
+
+const setFlashAdsSetting = (payload) => {
+  const value = normalizeFlashAds(payload);
+  const existing = mockSettings.find((setting) => setting.key === 'flash_ads');
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = nowIso();
+    return value;
+  }
+  mockSettings.unshift({ id: createId('SET', 3), key: 'flash_ads', value, updatedAt: nowIso() });
+  return value;
+};
+
+const getCategoryMediaSetting = () => {
+  const existing = mockSettings.find((setting) => setting.key === 'category_media');
+  const value = existing && typeof existing.value === 'object' && !Array.isArray(existing.value) ? existing.value : {};
+  return value;
+};
+
+const setCategoryMediaSetting = (value) => {
+  const existing = mockSettings.find((setting) => setting.key === 'category_media');
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = nowIso();
+    return value;
+  }
+  mockSettings.unshift({ id: createId('SET', 3), key: 'category_media', value, updatedAt: nowIso() });
+  return value;
+};
+
+const updateCategoryMedia = (categoryId, payload) => {
+  const current = getCategoryMediaSetting();
+  const existing = current[categoryId] || {};
+  const next = { ...current };
+  if (payload.video === null || payload.video === undefined || `${payload.video}`.trim().length === 0) {
+    const { video: _removed, ...rest } = existing;
+    if (Object.keys(rest).length === 0) {
+      delete next[categoryId];
+    } else {
+      next[categoryId] = rest;
+    }
+  } else {
+    next[categoryId] = { ...existing, video: payload.video };
+  }
+  return setCategoryMediaSetting(next);
 };
 
 const mockFeatureToggles = [
@@ -2189,20 +2306,34 @@ app.patch('/api/admin/inventory/:id', requireAdmin, (req, res) => {
 });
 
 app.get('/api/admin/categories', requireAdmin, (req, res) => {
+  const media = getCategoryMediaSetting();
   const sorted = categories
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((c) => ({ id: c.id, name: c.name, image: toPublicMediaUrl(req, c.image) }));
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      image: toPublicMediaUrl(req, c.image),
+      video: media[c.id] ? media[c.id].video : undefined,
+    }));
   res.json(sorted);
 });
 
 app.post('/api/admin/categories', requireAdmin, (req, res) => {
-  const { name, image } = req.body || {};
+  const { name, image, video } = req.body || {};
   if (!name || !name.toString().trim()) {
     return res.status(400).json({ error: 'Invalid payload' });
   }
   const category = ensureCategory(name.toString(), image ? image.toString() : undefined);
-  res.status(201).json({ ...category, image: toPublicMediaUrl(req, category.image) });
+  if (video) {
+    updateCategoryMedia(category.id, { video: video.toString() });
+  }
+  const media = getCategoryMediaSetting();
+  res.status(201).json({
+    ...category,
+    image: toPublicMediaUrl(req, category.image),
+    video: media[category.id] ? media[category.id].video : undefined,
+  });
 });
 
 app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
@@ -2213,7 +2344,24 @@ app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
     if (p.categoryId === existing.id) p.categoryId = uncategorized.id;
   });
   categories = categories.filter((c) => c.id !== existing.id);
+  updateCategoryMedia(req.params.id, { video: null });
   res.json({ id: req.params.id });
+});
+
+app.patch('/api/admin/categories/:id', requireAdmin, (req, res) => {
+  const { name, image, video } = req.body || {};
+  const existing = categories.find((c) => c.id === req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  if (name && name.toString().trim()) existing.name = name.toString().trim();
+  if (image !== undefined) existing.image = image ? image.toString() : existing.image;
+  if (video !== undefined) updateCategoryMedia(existing.id, { video: video ? video.toString() : null });
+  const media = getCategoryMediaSetting();
+  res.json({
+    id: existing.id,
+    name: existing.name,
+    image: toPublicMediaUrl(req, existing.image),
+    video: media[existing.id] ? media[existing.id].video : undefined,
+  });
 });
 
 app.get('/api/admin/flash-deals', requireAdmin, (_req, res) => {
@@ -2222,6 +2370,15 @@ app.get('/api/admin/flash-deals', requireAdmin, (_req, res) => {
 
 app.put('/api/admin/flash-deals', requireAdmin, (req, res) => {
   const value = setFlashDealsSetting(req.body || {});
+  res.json(value);
+});
+
+app.get('/api/admin/flash-ads', requireAdmin, (_req, res) => {
+  res.json(getFlashAdsSetting());
+});
+
+app.put('/api/admin/flash-ads', requireAdmin, (req, res) => {
+  const value = setFlashAdsSetting(req.body || {});
   res.json(value);
 });
 

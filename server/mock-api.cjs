@@ -30,6 +30,7 @@ const flashDeals = {
   subtitle: 'Limited time offers - up to 30% off.',
   endsAt: null,
   productIds: [],
+  cards: [],
 };
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
@@ -40,12 +41,22 @@ app.get('/api/categories', (req, res) => {
     'c2': 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&h=200&fit=crop',
     'c3': 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=200&h=200&fit=crop'
   };
-  const result = categories.map(c => ({ id: c.id, name: c.name, image: categoryImages[c.id] || c.image, productCount: products.filter(p => p.categoryId === c.id).length }));
+  const result = categories.map(c => ({
+    id: c.id,
+    name: c.name,
+    image: categoryImages[c.id] || c.image,
+    video: null,
+    productCount: products.filter(p => p.categoryId === c.id).length
+  }));
   res.json(result);
 });
 
 app.get('/api/flash-deals', (_req, res) => {
   res.json(flashDeals);
+});
+
+app.get('/api/flash-ads', (_req, res) => {
+  res.json({ ads: [] });
 });
 
 app.get('/api/products', (req, res) => {

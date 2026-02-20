@@ -188,6 +188,14 @@
     animation: pulseGlow 2s ease-in-out infinite;
   }
 
+  .animate-flash-float {
+    animation: flashFloat 3s ease-in-out infinite;
+  }
+
+  .animate-flash-zoom {
+    animation: flashZoom 2.6s ease-in-out infinite;
+  }
+
   .route-dash {
     animation: routeDash 4s linear infinite;
   }
@@ -259,6 +267,16 @@
   50% { box-shadow: 0 0 20px hsl(43 74% 49% / 0.6); }
 }
 
+@keyframes flashFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes flashZoom {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
 @keyframes routeDash {
   to { stroke-dashoffset: -80; }
 }
@@ -273,7 +291,9 @@
   .route-pulse,
   .animate-pulse-glow,
   .animate-bounce-subtle,
-  .animate-slide-up {
+  .animate-slide-up,
+  .animate-flash-float,
+  .animate-flash-zoom {
     animation: none !important;
   }
 }

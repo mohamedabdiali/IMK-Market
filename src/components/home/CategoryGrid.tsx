@@ -22,6 +22,7 @@ export function CategoryGrid() {
   });
   const categoryList = categories as Category[];
   const [brokenCategoryImages, setBrokenCategoryImages] = useState<Record<string, boolean>>({});
+  const [brokenCategoryVideos, setBrokenCategoryVideos] = useState<Record<string, boolean>>({});
 
   const isImageUrl = (value: unknown) =>
     typeof value === "string" &&
@@ -96,7 +97,23 @@ export function CategoryGrid() {
               >
                 <div className="aspect-[4/3] bg-secondary/20 p-1.5">
                   <div className="h-full w-full overflow-hidden rounded-lg border border-border/70 bg-background/90">
-                    {isImageUrl(category.image) && !brokenCategoryImages[category.id] ? (
+                    {isImageUrl(category.video) && !brokenCategoryVideos[category.id] ? (
+                      <video
+                        src={category.video}
+                        className="w-full h-full object-contain p-1.5"
+                        muted
+                        loop
+                        playsInline
+                        autoPlay
+                        preload="metadata"
+                        onError={() =>
+                          setBrokenCategoryVideos((prev) => ({
+                            ...prev,
+                            [category.id]: true,
+                          }))
+                        }
+                      />
+                    ) : isImageUrl(category.image) && !brokenCategoryImages[category.id] ? (
                       <img
                         src={category.image}
                         alt={category.name}

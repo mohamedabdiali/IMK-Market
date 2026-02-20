@@ -169,6 +169,53 @@ const DEFAULT_FLASH_DEALS = {
   subtitle: "Limited time offers - up to 30% off.",
   endsAt: null as string | null,
   productIds: [] as string[],
+  cards: [] as Array<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    badge?: string;
+    price?: string;
+    cta?: string;
+    mediaType: "image" | "video";
+    mediaUrl: string;
+    animation?: "none" | "pulse" | "float" | "zoom";
+  }>,
+};
+
+const flashDealCardSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  badge: z.string().optional(),
+  price: z.string().optional(),
+  cta: z.string().optional(),
+  mediaType: z.enum(["image", "video"]).optional(),
+  mediaUrl: z.string().optional(),
+  animation: z.enum(["none", "pulse", "float", "zoom"]).optional(),
+});
+
+const normalizeFlashDealCards = (cards: unknown) => {
+  if (!Array.isArray(cards)) return [] as typeof DEFAULT_FLASH_DEALS.cards;
+  return cards
+    .map((entry) => {
+      const parsed = flashDealCardSchema.safeParse(entry ?? {});
+      if (!parsed.success) return null;
+      const mediaUrl = parsed.data.mediaUrl?.trim();
+      if (!mediaUrl) return null;
+      const id = parsed.data.id?.trim() || `promo-${nanoid(6)}`;
+      return {
+        id,
+        title: parsed.data.title?.trim() || "Flash Deal",
+        subtitle: parsed.data.subtitle?.trim() || "",
+        badge: parsed.data.badge?.trim() || "",
+        price: parsed.data.price?.trim() || "",
+        cta: parsed.data.cta?.trim() || "",
+        mediaType: parsed.data.mediaType === "video" ? "video" : "image",
+        mediaUrl,
+        animation: parsed.data.animation || "none",
+      };
+    })
+    .filter(Boolean) as typeof DEFAULT_FLASH_DEALS.cards;
 };
 
 const normalizeFlashDeals = (value: unknown) => {
@@ -178,6 +225,7 @@ const normalizeFlashDeals = (value: unknown) => {
       subtitle: z.string().optional(),
       endsAt: z.string().nullable().optional(),
       productIds: z.array(z.string()).optional(),
+      cards: z.array(z.unknown()).optional(),
     })
     .safeParse(value ?? {});
 
@@ -193,18 +241,129 @@ const normalizeFlashDeals = (value: unknown) => {
   const productIds = Array.from(
     new Set((parsed.data.productIds ?? []).map((id) => id.trim()).filter(Boolean))
   );
+  const cards = normalizeFlashDealCards(parsed.data.cards).slice(0, 12);
 
   return {
     title,
     subtitle,
     endsAt,
     productIds,
+    cards,
   };
 };
 
 const fetchFlashDealsSetting = async () => {
   const setting = await prisma.systemSetting.findUnique({ where: { key: "flash_deals" } });
   return normalizeFlashDeals(setting?.value);
+};
+
+const DEFAULT_FLASH_ADS = {
+  ads: [] as Array<{
+    id: string;
+    slot: "left" | "right";
+    title?: string;
+    subtitle?: string;
+    text?: string;
+    badge?: string;
+    cta?: string;
+    mediaType: "image" | "video";
+    mediaUrl: string;
+    animation?: "none" | "pulse" | "float" | "zoom";
+  }>,
+};
+
+const flashAdSchema = z.object({
+  id: z.string().optional(),
+  slot: z.enum(["left", "right"]).optional(),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  text: z.string().optional(),
+  badge: z.string().optional(),
+  cta: z.string().optional(),
+  mediaType: z.enum(["image", "video"]).optional(),
+  mediaUrl: z.string().optional(),
+  animation: z.enum(["none", "pulse", "float", "zoom"]).optional(),
+});
+
+const normalizeFlashAds = (value: unknown) => {
+  if (!value || typeof value !== "object") return { ...DEFAULT_FLASH_ADS };
+  const rawAds = Array.isArray((value as { ads?: unknown[] }).ads) ? (value as { ads?: unknown[] }).ads : [];
+  const ads = rawAds
+    .map((entry) => {
+      const parsed = flashAdSchema.safeParse(entry ?? {});
+      if (!parsed.success) return null;
+      const mediaUrl = parsed.data.mediaUrl?.trim();
+      if (!mediaUrl) return null;
+      const slot = parsed.data.slot === "right" ? "right" : "left";
+      return {
+        id: parsed.data.id?.trim() || `ad-${nanoid(6)}`,
+        slot,
+        title: parsed.data.title?.trim() || "",
+        subtitle: parsed.data.subtitle?.trim() || "",
+        text: parsed.data.text?.trim() || "",
+        badge: parsed.data.badge?.trim() || "",
+        cta: parsed.data.cta?.trim() || "",
+        mediaType: parsed.data.mediaType === "video" ? "video" : "image",
+        mediaUrl,
+        animation: parsed.data.animation || "none",
+      };
+    })
+    .filter(Boolean) as typeof DEFAULT_FLASH_ADS.ads;
+  return { ads };
+};
+
+const fetchFlashAdsSetting = async () => {
+  const setting = await prisma.systemSetting.findUnique({ where: { key: "flash_ads" } });
+  return normalizeFlashAds(setting?.value);
+};
+
+const CATEGORY_MEDIA_KEY = "category_media";
+
+type CategoryMediaMap = Record<string, { video?: string }>;
+
+const normalizeCategoryMediaMap = (value: unknown): CategoryMediaMap => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const raw = value as Record<string, unknown>;
+  const result: CategoryMediaMap = {};
+  for (const [key, entry] of Object.entries(raw)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const media = entry as { video?: unknown };
+    if (typeof media.video === "string" && media.video.trim().length) {
+      result[key] = { video: media.video };
+    }
+  }
+  return result;
+};
+
+const fetchCategoryMediaSetting = async () => {
+  const setting = await prisma.systemSetting.findUnique({ where: { key: CATEGORY_MEDIA_KEY } });
+  return normalizeCategoryMediaMap(setting?.value);
+};
+
+const saveCategoryMediaSetting = async (map: CategoryMediaMap) => {
+  await prisma.systemSetting.upsert({
+    where: { key: CATEGORY_MEDIA_KEY },
+    update: { value: map },
+    create: { key: CATEGORY_MEDIA_KEY, value: map },
+  });
+};
+
+const updateCategoryMediaSetting = async (categoryId: string, payload: { video?: string | null }) => {
+  const current = await fetchCategoryMediaSetting();
+  const existing = current[categoryId] || {};
+  const next = { ...current };
+  if (payload.video === null || payload.video === undefined || payload.video.trim().length === 0) {
+    const { video: _removed, ...rest } = existing;
+    if (Object.keys(rest).length === 0) {
+      delete next[categoryId];
+    } else {
+      next[categoryId] = rest;
+    }
+  } else {
+    next[categoryId] = { ...existing, video: payload.video };
+  }
+  await saveCategoryMediaSetting(next);
+  return next;
 };
 
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
@@ -680,6 +839,7 @@ app.get("/api/categories", async (_req, res) => {
       where: tenantId ? { tenantId } : undefined,
       select: { categoryId: true },
     });
+    const categoryMedia = await fetchCategoryMediaSetting();
     const productCounts = products.reduce<Record<string, number>>((acc, product) => {
       acc[product.categoryId] = (acc[product.categoryId] || 0) + 1;
       return acc;
@@ -689,6 +849,7 @@ app.get("/api/categories", async (_req, res) => {
       id: category.id,
       name: category.name,
       image: category.image,
+      video: categoryMedia[category.id]?.video,
       productCount: productCounts[category.id] || 0,
     }));
 
@@ -706,6 +867,16 @@ app.get("/api/flash-deals", async (_req, res) => {
   } catch (e) {
     console.error("Fetch flash deals error", e);
     res.status(500).json({ error: "Failed to fetch flash deals" });
+  }
+});
+
+app.get("/api/flash-ads", async (_req, res) => {
+  try {
+    const ads = await fetchFlashAdsSetting();
+    res.json(ads);
+  } catch (e) {
+    console.error("Fetch flash ads error", e);
+    res.status(500).json({ error: "Failed to fetch flash ads" });
   }
 });
 
@@ -2274,7 +2445,13 @@ app.patch("/api/admin/inventory/:id", requireAdmin, requirePermission("products"
 app.get("/api/admin/categories", requireAdmin, requirePermission("products", "view"), async (_req, res) => {
   try {
     const categories = await prisma.category.findMany({ orderBy: { name: "asc" } });
-    res.json(categories);
+    const categoryMedia = await fetchCategoryMediaSetting();
+    res.json(
+      categories.map((category) => ({
+        ...category,
+        video: categoryMedia[category.id]?.video,
+      }))
+    );
   } catch (e) {
     console.error("Fetch admin categories error", e);
     res.status(500).json({ error: "Failed to fetch categories" });
@@ -2282,7 +2459,11 @@ app.get("/api/admin/categories", requireAdmin, requirePermission("products", "vi
 });
 
 app.post("/api/admin/categories", requireAdmin, requirePermission("products", "create"), async (req, res) => {
-  const schema = z.object({ name: z.string().min(1), image: z.string().url().optional() });
+  const schema = z.object({
+    name: z.string().min(1),
+    image: z.string().optional(),
+    video: z.string().optional(),
+  });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid payload" });
@@ -2292,8 +2473,12 @@ app.post("/api/admin/categories", requireAdmin, requirePermission("products", "c
     if (parsed.data.image) {
       await prisma.category.update({ where: { id: category.id }, data: { image: parsed.data.image } });
     }
+    if (parsed.data.video) {
+      await updateCategoryMediaSetting(category.id, { video: parsed.data.video });
+    }
     const fresh = await prisma.category.findUnique({ where: { id: category.id } });
-    res.status(201).json(fresh);
+    const categoryMedia = await fetchCategoryMediaSetting();
+    res.status(201).json({ ...fresh, video: categoryMedia[category.id]?.video });
   } catch (e) {
     console.error("Create category error", e);
     res.status(500).json({ error: "Failed to create category" });
@@ -2307,10 +2492,42 @@ app.delete("/api/admin/categories/:id", requireAdmin, requirePermission("product
     const uncategorized = await ensureCategory("Uncategorized");
     await prisma.product.updateMany({ where: { categoryId: toRemove.id }, data: { categoryId: uncategorized.id } });
     await prisma.category.delete({ where: { id: req.params.id } });
+    await updateCategoryMediaSetting(req.params.id, { video: null });
     res.json({ id: req.params.id });
   } catch (e) {
     console.error("Delete category error", e);
     res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
+app.patch("/api/admin/categories/:id", requireAdmin, requirePermission("products", "edit"), async (req, res) => {
+  const schema = z.object({
+    name: z.string().min(1).optional(),
+    image: z.string().optional().nullable(),
+    video: z.string().optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const existing = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const updateData: { name?: string; image?: string | null } = {};
+    if (parsed.data.name) updateData.name = parsed.data.name;
+    if (parsed.data.image !== undefined) updateData.image = parsed.data.image;
+    if (Object.keys(updateData).length > 0) {
+      await prisma.category.update({ where: { id: req.params.id }, data: updateData });
+    }
+    if (parsed.data.video !== undefined) {
+      await updateCategoryMediaSetting(req.params.id, { video: parsed.data.video });
+    }
+    const fresh = await prisma.category.findUnique({ where: { id: req.params.id } });
+    const categoryMedia = await fetchCategoryMediaSetting();
+    res.json({ ...fresh, video: categoryMedia[req.params.id]?.video });
+  } catch (e) {
+    console.error("Update category error", e);
+    res.status(500).json({ error: "Failed to update category" });
   }
 });
 
@@ -2331,6 +2548,7 @@ app.put("/api/admin/flash-deals", requireAdmin, requirePermission("marketing", "
       subtitle: z.string().optional(),
       endsAt: z.string().nullable().optional(),
       productIds: z.array(z.string()).optional(),
+      cards: z.array(z.unknown()).optional(),
     })
     .safeParse(req.body);
   if (!parsed.success) {
@@ -2347,6 +2565,39 @@ app.put("/api/admin/flash-deals", requireAdmin, requirePermission("marketing", "
   } catch (e) {
     console.error("Update flash deals error", e);
     res.status(500).json({ error: "Failed to update flash deals" });
+  }
+});
+
+app.get("/api/admin/flash-ads", requireAdmin, requirePermission("marketing", "view"), async (_req, res) => {
+  try {
+    const ads = await fetchFlashAdsSetting();
+    res.json(ads);
+  } catch (e) {
+    console.error("Fetch admin flash ads error", e);
+    res.status(500).json({ error: "Failed to fetch flash ads" });
+  }
+});
+
+app.put("/api/admin/flash-ads", requireAdmin, requirePermission("marketing", "edit"), async (req, res) => {
+  const parsed = z
+    .object({
+      ads: z.array(z.unknown()).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const value = normalizeFlashAds(parsed.data);
+    const updated = await prisma.systemSetting.upsert({
+      where: { key: "flash_ads" },
+      update: { value },
+      create: { key: "flash_ads", value },
+    });
+    res.json(updated.value);
+  } catch (e) {
+    console.error("Update flash ads error", e);
+    res.status(500).json({ error: "Failed to update flash ads" });
   }
 });
 

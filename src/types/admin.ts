@@ -107,6 +107,7 @@ export interface CategoryItem {
   id: string;
   name: string;
   image?: string;
+  video?: string;
 }
 
 export interface EmailHistoryItem {

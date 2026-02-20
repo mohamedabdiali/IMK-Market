@@ -265,7 +265,7 @@ export default function AdminProductManagement() {
     if (invalidImage) {
       toast({
         title: "Invalid image",
-        description: "Images must be a URL (http/https) or data URI.",
+        description: "Images must be valid uploaded media.",
         variant: "destructive",
       });
       return;
@@ -427,14 +427,14 @@ export default function AdminProductManagement() {
       return;
     }
     const invalidImage = normalizedImages.find((img) => !(img.startsWith("data:") || img.startsWith("http")));
-    if (invalidImage) {
-      toast({
-        title: "Invalid image",
-        description: "Images must be a URL (http/https) or data URI.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (invalidImage) {
+        toast({
+          title: "Invalid image",
+          description: "Images must be valid uploaded media.",
+          variant: "destructive",
+        });
+        return;
+      }
     if (Number.isNaN(Number(editing.price))) {
       toast({
         title: "Invalid price",

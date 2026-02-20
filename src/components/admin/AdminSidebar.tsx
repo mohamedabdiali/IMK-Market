@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   LogOut,
   Shield,
-  Flame
+  Flame,
+  Megaphone
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -25,6 +26,7 @@ const menuItems = [
   { icon: Boxes, label: "Inventory", path: "/admin/inventory" },
   { icon: FolderTree, label: "Categories", path: "/admin/categories" },
   { icon: Flame, label: "Flash Deals", path: "/admin/flash-deals" },
+  { icon: Megaphone, label: "Flash Ads", path: "/admin/flash-ads" },
   { icon: Upload, label: "Bulk Ops", path: "/admin/bulk-operations", roles: ["Super Admin", "Manager"] },
   { icon: Mail, label: "Email", path: "/admin/email", roles: ["Super Admin", "Manager"] },
   { icon: BarChart3, label: "Analytics", path: "/admin/analytics", roles: ["Super Admin", "Manager"] },

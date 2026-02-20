@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, ShoppingCart, DollarSign, TrendingUp } from "lucide-react";
+import { Package, ShoppingCart, DollarSign, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -46,6 +46,8 @@ interface ProductFormData {
     categoryId: string;
     images: string[];
 }
+
+const IMAGE_MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 export default function SellerDashboard() {
     const { token } = useAuth();
@@ -259,8 +261,9 @@ function ProductDialog({
         price: 0,
         stock: 0,
         categoryId: "",
-        images: ["/placeholder.svg"],
+        images: [],
     });
+    const [isImageProcessing, setIsImageProcessing] = useState(false);
 
     // Reset/Sync form data when product changes or dialog opens
     useEffect(() => {
@@ -272,7 +275,7 @@ function ProductDialog({
                     price: product.price || 0,
                     stock: product.stock || 0,
                     categoryId: product.categoryId || "",
-                    images: product.images && product.images.length > 0 ? product.images : [product.image || "/placeholder.svg"],
+                    images: product.images && product.images.length > 0 ? product.images : product.image ? [product.image] : [],
                 });
             } else {
                 setFormData({
@@ -281,11 +284,50 @@ function ProductDialog({
                     price: 0,
                     stock: 0,
                     categoryId: "",
-                    images: ["/placeholder.svg"],
+                    images: [],
                 });
             }
         }
     }, [open, product]);
+
+    const readFileAsDataUrl = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error("Unable to read image file."));
+            reader.readAsDataURL(file);
+        });
+
+    const handleImagesUpload = async (files?: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const selectedFiles = Array.from(files);
+        const invalid = selectedFiles.find((file) => !file.type.startsWith("image/"));
+        if (invalid) {
+            toast.error("Please upload only image files.");
+            return;
+        }
+        const tooLarge = selectedFiles.find((file) => file.size > IMAGE_MAX_FILE_SIZE);
+        if (tooLarge) {
+            toast.error("Each image must be smaller than 5MB.");
+            return;
+        }
+        setIsImageProcessing(true);
+        try {
+            const processed: string[] = [];
+            for (const file of selectedFiles) {
+                processed.push(await readFileAsDataUrl(file));
+            }
+            setFormData((prev) => ({ ...prev, images: [...prev.images, ...processed] }));
+        } catch {
+            toast.error("Image upload failed. Please try again.");
+        } finally {
+            setIsImageProcessing(false);
+        }
+    };
+
+    const removeImage = (index: number) => {
+        setFormData((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+    };
 
     const mutation = useMutation({
         mutationFn: (data: ProductFormData) => {
@@ -305,8 +347,11 @@ function ProductDialog({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const normalizedImages = formData.images && formData.images.length > 0 ? formData.images : ["/placeholder.svg"];
-        mutation.mutate({ ...formData, images: normalizedImages });
+        if (!formData.images || formData.images.length === 0) {
+            toast.error("Please upload at least one product image.");
+            return;
+        }
+        mutation.mutate({ ...formData, images: formData.images });
     };
 
     return (
@@ -378,8 +423,38 @@ function ProductDialog({
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                        Product images are managed automatically. A default image will be used if none are provided.
+                    <div className="space-y-2">
+                        <Label htmlFor="product-images">Product Images</Label>
+                        <Input
+                            id="product-images"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => handleImagesUpload(e.target.files)}
+                        />
+                        {isImageProcessing && (
+                            <p className="text-xs text-muted-foreground">Processing images...</p>
+                        )}
+                        {formData.images.length > 0 && (
+                            <div className="grid grid-cols-5 gap-2">
+                                {formData.images.map((img, idx) => (
+                                    <div
+                                        key={`${img}-${idx}`}
+                                        className="relative h-16 w-16 overflow-hidden rounded-md border border-border"
+                                    >
+                                        <img src={img} alt={`Product ${idx + 1}`} className="h-full w-full object-cover" />
+                                        <button
+                                            type="button"
+                                            className="absolute right-1 top-1 rounded bg-background/80 px-1 text-xs text-foreground shadow"
+                                            onClick={() => removeImage(idx)}
+                                            aria-label="Remove image"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
