@@ -96,7 +96,7 @@ export function ProductDetailGallery({
           ))}
         </div>
 
-        <div className="relative flex-1 aspect-square overflow-hidden rounded-2xl border border-border bg-secondary/20">
+        <div className="relative flex-1 max-w-[520px] mx-auto aspect-[4/3] overflow-hidden rounded-2xl border border-border bg-secondary/20">
           <button
             type="button"
             className="group relative h-full w-full cursor-zoom-in"
@@ -112,7 +112,7 @@ export function ProductDetailGallery({
               onError={handleImageError}
               className={cn(
                 "h-full w-full object-cover transition-transform duration-150",
-                hoverZoom ? "scale-[2.1]" : "scale-100"
+                hoverZoom ? "scale-[1.6]" : "scale-100"
               )}
               style={hoverZoom ? { transformOrigin: `${hoverPoint.x}% ${hoverPoint.y}%` } : undefined}
             />

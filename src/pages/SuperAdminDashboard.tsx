@@ -1,4 +1,5 @@
 ﻿import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -218,8 +219,13 @@ interface AuditLogResponse {
 }
 
 export default function SuperAdminDashboard() {
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -229,7 +235,17 @@ export default function SuperAdminDashboard() {
             <h1 className="text-3xl font-bold">Super Admin Console</h1>
             <p className="text-muted-foreground">Platform-wide controls, tenant oversight, and security management.</p>
           </div>
-          <div className="text-sm text-muted-foreground">{user?.email ? `Signed in as ${user.email}` : ""}</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {user?.email ? `Signed in as ${user.email}` : ""}
+            </span>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Store
+            </Button>
+            <Button variant="destructive" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
