@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -10,6 +11,7 @@ app.use(cors());
 app.use(express.json({ limit: BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 app.use('/mock-images', express.static(path.join(__dirname, '..', 'public', 'mock-images')));
+app.use('/assets', express.static(path.join(__dirname, '..', 'public', 'assets')));
 
 const PORT = Number(process.env.API_PORT || process.env.PORT || 5050);
 
@@ -67,6 +69,228 @@ const createId = (prefix, bytes = 4) => `${prefix}-${crypto.randomBytes(bytes).t
 const nowIso = () => new Date().toISOString();
 const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[randInt(0, arr.length - 1)];
+
+const DATA_PATH = path.join(__dirname, '..', 'data', 'imk-market.json');
+const ASSET_ROOT = path.join(__dirname, '..', 'public', 'assets');
+const PRODUCT_ASSET_ROOT = path.join(ASSET_ROOT, 'products');
+const MIN_ASSET_BYTES = 5 * 1024;
+
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
+
+const isLocalAssetPath = (value) => typeof value === 'string' && value.startsWith('/assets/');
+
+const assetPathToDisk = (value) => {
+  if (!isLocalAssetPath(value)) return null;
+  const relative = value.replace('/assets/', '');
+  return path.join(ASSET_ROOT, relative);
+};
+
+const isUsableAsset = (value) => {
+  const diskPath = assetPathToDisk(value);
+  if (!diskPath || !fs.existsSync(diskPath)) return false;
+  try {
+    const stats = fs.statSync(diskPath);
+    return stats.isFile() && stats.size >= MIN_ASSET_BYTES;
+  } catch {
+    return false;
+  }
+};
+
+const listAssetFiles = (diskDir, urlBase, extensions) => {
+  if (!diskDir || !fs.existsSync(diskDir)) return [];
+  try {
+    return fs
+      .readdirSync(diskDir)
+      .filter((file) => extensions.has(path.extname(file).toLowerCase()))
+      .filter((file) => {
+        const filePath = path.join(diskDir, file);
+        try {
+          const stats = fs.statSync(filePath);
+          return stats.isFile() && stats.size >= MIN_ASSET_BYTES;
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => a.localeCompare(b))
+      .map((file) => `${urlBase}/${file}`);
+  } catch {
+    return [];
+  }
+};
+
+const buildProductAssetIndex = () => {
+  if (!fs.existsSync(PRODUCT_ASSET_ROOT)) return { index: new Map(), sets: [] };
+  const entries = fs.readdirSync(PRODUCT_ASSET_ROOT, { withFileTypes: true });
+  const index = new Map();
+  const sets = [];
+  entries
+    .filter((entry) => entry.isDirectory())
+    .forEach((entry) => {
+      const productId = entry.name;
+      const diskDir = path.join(PRODUCT_ASSET_ROOT, productId);
+      const urlBase = `/assets/products/${productId}`;
+      const images = listAssetFiles(diskDir, urlBase, IMAGE_EXTENSIONS);
+      const videos = listAssetFiles(diskDir, urlBase, VIDEO_EXTENSIONS);
+      if (images.length) {
+        const assetSet = { images, videos };
+        index.set(productId, assetSet);
+        sets.push(assetSet);
+      }
+    });
+  return { index, sets };
+};
+
+const productAssetCache = buildProductAssetIndex();
+
+const pickAssetSet = (key) => {
+  if (!productAssetCache.sets.length) return null;
+  const text = (key || '').toString();
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return productAssetCache.sets[hash % productAssetCache.sets.length];
+};
+
+const ensureGallerySize = (images, minSize = 8) => {
+  if (!Array.isArray(images)) return [];
+  const unique = images.filter(Boolean);
+  if (unique.length === 0) return [];
+  const output = unique.slice();
+  let cursor = 0;
+  while (output.length < minSize) {
+    output.push(unique[cursor % unique.length]);
+    cursor += 1;
+  }
+  return output;
+};
+
+const toNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const toBoolean = (value, fallback = false) => (typeof value === 'boolean' ? value : fallback);
+
+const loadImkMarketSeed = () => {
+  if (!fs.existsSync(DATA_PATH)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeSeedProducts = (items, categories) => {
+  const categoryByName = new Map(
+    (Array.isArray(categories) ? categories : [])
+      .filter((cat) => cat && cat.name && cat.id)
+      .map((cat) => [cat.name.toLowerCase(), cat.id])
+  );
+  const categoryIds = new Set(
+    (Array.isArray(categories) ? categories : [])
+      .filter((cat) => cat && cat.id)
+      .map((cat) => cat.id.toString())
+  );
+  const fallbackSets = (Array.isArray(items) ? items : [])
+    .map((product) => {
+      const rawImages = Array.isArray(product.images)
+        ? product.images.filter((img) => typeof img === 'string' && img.trim())
+        : [];
+      const rawVideos = Array.isArray(product.videos)
+        ? product.videos.filter((vid) => typeof vid === 'string' && vid.trim())
+        : [];
+      const localImages = rawImages.filter((img) => isLocalAssetPath(img) && isUsableAsset(img));
+      const usableImages = localImages.length ? localImages : rawImages;
+      const images = ensureGallerySize(usableImages, 8);
+      if (images.length < 8) return null;
+      const localVideos = rawVideos.filter((vid) => isLocalAssetPath(vid) && isUsableAsset(vid));
+      return { images, videos: localVideos.length ? localVideos : rawVideos };
+    })
+    .filter(Boolean);
+  const combinedSets = [...productAssetCache.sets, ...fallbackSets];
+  const pickFallbackSet = (key) => {
+    if (!combinedSets.length) return null;
+    const text = (key || '').toString();
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    }
+    return combinedSets[hash % combinedSets.length];
+  };
+
+  return (Array.isArray(items) ? items : []).map((product) => {
+    const id = (product.id || createId('PRD', 4)).toString();
+    const assetSet = productAssetCache.index.get(id) || null;
+    const fallbackSet = pickFallbackSet(product.name || id);
+    const rawImages = Array.isArray(product.images)
+      ? product.images.filter((img) => typeof img === 'string' && img.trim())
+      : [];
+    const rawVideos = Array.isArray(product.videos)
+      ? product.videos.filter((vid) => typeof vid === 'string' && vid.trim())
+      : [];
+    const localImages = rawImages.filter((img) => isLocalAssetPath(img) && isUsableAsset(img));
+    const localVideos = rawVideos.filter((vid) => isLocalAssetPath(vid) && isUsableAsset(vid));
+
+    let images = [];
+    if (assetSet && assetSet.images.length) images = assetSet.images.slice();
+    else if (localImages.length) images = localImages.slice();
+    else if (fallbackSet && fallbackSet.images.length) images = fallbackSet.images.slice();
+    else if (rawImages.length) images = rawImages.slice();
+    else if (product.image) images = [product.image];
+
+    images = ensureGallerySize(images, 8);
+
+    let videos = [];
+    if (assetSet && assetSet.videos.length) videos = assetSet.videos.slice();
+    else if (localVideos.length) videos = localVideos.slice();
+    else if (fallbackSet && fallbackSet.videos.length) videos = fallbackSet.videos.slice();
+    else if (rawVideos.length) videos = rawVideos.slice();
+    else if (product.video) videos = [product.video];
+
+    let categoryId = null;
+    if (product.categoryId && categoryIds.has(product.categoryId.toString())) {
+      categoryId = product.categoryId.toString();
+    } else if (typeof product.category === 'string') {
+      const rawCategory = product.category.toString();
+      if (categoryIds.has(rawCategory)) {
+        categoryId = rawCategory;
+      } else {
+        categoryId = categoryByName.get(rawCategory.toLowerCase()) || null;
+      }
+    }
+    if (!categoryId && categories && categories.length) {
+      categoryId = categories[0].id.toString();
+    }
+
+    return {
+      ...product,
+      id,
+      name: product.name || `Product ${id}`,
+      description: product.description || '',
+      price: toNumber(product.price, 0),
+      originalPrice: product.originalPrice === undefined || product.originalPrice === null ? undefined : toNumber(product.originalPrice),
+      image: images[0] || product.image || '',
+      images,
+      videos,
+      categoryId,
+      rating: toNumber(product.rating, 4.5),
+      reviewCount: Math.max(0, Math.floor(toNumber(product.reviewCount, 0))),
+      inStock: toBoolean(product.inStock, true),
+      freeShipping: toBoolean(product.freeShipping, false),
+      badge: product.badge ?? null,
+      createdAt: product.createdAt || nowIso(),
+      updatedAt: product.updatedAt || product.createdAt || nowIso(),
+      sku: product.sku || `IMK-${Math.floor(Math.random() * 9000 + 1000)}`,
+      stock: Math.max(0, Math.floor(toNumber(product.stock, 0))),
+      lowStockThreshold: Math.max(0, Math.floor(toNumber(product.lowStockThreshold, 10))),
+      lastRestocked: product.lastRestocked || product.createdAt || nowIso(),
+      status: product.status || 'active',
+    };
+  });
+};
 const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
 
 const TRACKING_EVENT_CONTENT = {
@@ -448,8 +672,10 @@ const ensureCategory = (name, image) => {
 const ensureUncategorized = () => ensureCategory('Uncategorized', '/mock-images/categories/default.svg');
 
 const isAbsoluteUrl = (value) => typeof value === 'string' && /^https?:\/\//i.test(value);
-const isImagePayload = (value) => typeof value === 'string' && (value.startsWith('data:image/') || isAbsoluteUrl(value));
-const isVideoPayload = (value) => typeof value === 'string' && (value.startsWith('data:video/') || isAbsoluteUrl(value));
+const isImagePayload = (value) =>
+  typeof value === 'string' && (value.startsWith('data:image/') || isAbsoluteUrl(value) || isLocalAssetPath(value));
+const isVideoPayload = (value) =>
+  typeof value === 'string' && (value.startsWith('data:video/') || isAbsoluteUrl(value) || isLocalAssetPath(value));
 const toPublicMediaUrl = (req, value) => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
@@ -613,6 +839,21 @@ let emailHistory = [
     status: 'Sent',
   },
 ];
+
+const imkSeed = loadImkMarketSeed();
+if (imkSeed) {
+  if (Array.isArray(imkSeed.categories) && imkSeed.categories.length) {
+    categories = imkSeed.categories.map((category) => ({
+      ...category,
+      id: category.id?.toString() || createId('CAT', 3),
+      name: category.name?.toString() || 'Uncategorized',
+      image: category.image || '/mock-images/categories/default.svg',
+    }));
+  }
+  if (Array.isArray(imkSeed.products) && imkSeed.products.length) {
+    products = normalizeSeedProducts(imkSeed.products, categories);
+  }
+}
 
 // Endpoints
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
@@ -2173,7 +2414,7 @@ app.post('/api/admin/products', requireAdmin, (req, res) => {
   const images = Array.isArray(payload.images) ? payload.images : payload.image ? [payload.image] : [];
   const normalizedImages = images
     .map((img) => (img || '').toString())
-    .filter((img) => img.startsWith('http') || img.startsWith('data:'))
+    .filter((img) => isImagePayload(img))
     .slice(0, 10);
   const videos = Array.isArray(payload.videos) ? payload.videos : [];
   const normalizedVideos = videos
@@ -2249,7 +2490,7 @@ app.patch('/api/admin/products/:id', requireAdmin, (req, res) => {
   if (Array.isArray(payload.images)) {
     const normalized = payload.images
       .map((img) => (img || '').toString())
-      .filter((img) => img.startsWith('http') || img.startsWith('data:'))
+      .filter((img) => isImagePayload(img))
       .slice(0, 10);
     if (normalized.length > 0) {
       product.images = normalized;
@@ -2257,7 +2498,7 @@ app.patch('/api/admin/products/:id', requireAdmin, (req, res) => {
     }
   } else if (payload.image !== undefined) {
     const img = (payload.image || '').toString();
-    if (img.startsWith('http') || img.startsWith('data:')) {
+    if (isImagePayload(img)) {
       const existing = Array.isArray(product.images) && product.images.length ? product.images : [product.image];
       product.images = [img, ...existing.slice(1)];
       product.image = img;
