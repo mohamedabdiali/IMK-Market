@@ -116,7 +116,18 @@ const products = [
   },
 ];
 
+const flashDeals = {
+  title: "Flash Deals",
+  subtitle: "Limited time offers - up to 30% off.",
+  endsAt: null,
+  productIds: [],
+};
+
 app.get("/api/health", (_req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+
+app.get("/api/flash-deals", (_req, res) => {
+  res.json(flashDeals);
+});
 
 app.get("/api/categories", (_req, res) => {
   const result = categories.map((c) => ({

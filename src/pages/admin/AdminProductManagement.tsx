@@ -64,8 +64,6 @@ export default function AdminProductManagement() {
   const [form, setForm] = useState({ ...emptyForm });
   const [editing, setEditing] = useState<ProductManagementItem | null>(null);
   const [isImageProcessing, setIsImageProcessing] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
-  const [editImageUrl, setEditImageUrl] = useState("");
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["admin-products"],
@@ -85,7 +83,6 @@ export default function AdminProductManagement() {
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       setShowForm(false);
       setForm({ ...emptyForm });
-      setImageUrl("");
       toast({ title: "Product added", description: "Product created successfully." });
     },
     onError: (error: Error) => {
@@ -363,28 +360,6 @@ export default function AdminProductManagement() {
     }
   };
 
-  const addCreateImageUrl = () => {
-    const trimmed = imageUrl.trim();
-    if (!trimmed) return;
-    if (!(trimmed.startsWith("data:") || trimmed.startsWith("http"))) {
-      toast({
-        title: "Invalid image URL",
-        description: "Images must be a URL (http/https) or data URI.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (form.images.length >= 10) {
-      toast({
-        title: "Image limit reached",
-        description: "Each product can have up to 10 images.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setForm((prev) => ({ ...prev, images: [...prev.images, trimmed] }));
-    setImageUrl("");
-  };
 
   const setCreateCoverImage = (index: number) => {
     setForm((prev) => {
@@ -400,30 +375,6 @@ export default function AdminProductManagement() {
     setForm((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
   };
 
-  const addEditImageUrl = () => {
-    const trimmed = editImageUrl.trim();
-    if (!trimmed || !editing) return;
-    if (!(trimmed.startsWith("data:") || trimmed.startsWith("http"))) {
-      toast({
-        title: "Invalid image URL",
-        description: "Images must be a URL (http/https) or data URI.",
-        variant: "destructive",
-      });
-      return;
-    }
-    const currentImages = (editing.images?.length ? editing.images : [editing.image]).filter(Boolean);
-    if (currentImages.length >= 10) {
-      toast({
-        title: "Image limit reached",
-        description: "Each product can have up to 10 images.",
-        variant: "destructive",
-      });
-      return;
-    }
-    const nextImages = [...currentImages, trimmed];
-    setEditing((prev) => (prev ? { ...prev, images: nextImages, image: nextImages[0] } : prev));
-    setEditImageUrl("");
-  };
 
   const setEditCoverImage = (index: number) => {
     setEditing((prev) => {
@@ -808,21 +759,6 @@ export default function AdminProductManagement() {
                 {form.images.length}/10 images • click a thumbnail to set cover
               </p>
             </div>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add image URL (optional)"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={addCreateImageUrl}
-                disabled={!imageUrl.trim().length || form.images.length >= 10}
-              >
-                Add
-              </Button>
-            </div>
             {isImageProcessing && (
               <p className="text-xs text-muted-foreground">Processing images...</p>
             )}
@@ -879,7 +815,6 @@ export default function AdminProductManagement() {
         onOpenChange={(open) => {
           if (!open) {
             setEditing(null);
-            setEditImageUrl("");
           }
         }}
       >
@@ -1021,21 +956,6 @@ export default function AdminProductManagement() {
                   <p className="text-xs text-muted-foreground">
                     {(editing.images?.length ? editing.images : [editing.image]).filter(Boolean).length}/10 images • click a thumbnail to set cover
                   </p>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Add image URL (optional)"
-                    value={editImageUrl}
-                    onChange={(e) => setEditImageUrl(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addEditImageUrl}
-                    disabled={!editImageUrl.trim().length}
-                  >
-                    Add
-                  </Button>
                 </div>
                 {isImageProcessing && (
                   <p className="text-xs text-muted-foreground">Processing images...</p>

@@ -76,6 +76,7 @@ export const api = {
   },
   getProduct: (id: string) => apiFetch(`/products/${id}`),
   getCategories: () => apiFetch("/categories"),
+  getFlashDeals: () => apiFetch("/flash-deals"),
   submitSellerProduct: (payload: unknown) =>
     apiFetch("/pending-products", {
       method: "POST",
@@ -183,6 +184,16 @@ export const api = {
   getCategoriesAdmin: (token: string) =>
     apiFetch("/admin/categories", {
       headers: { Authorization: `Bearer ${token}` },
+    }),
+  getFlashDealsAdmin: (token: string) =>
+    apiFetch("/admin/flash-deals", {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  updateFlashDealsAdmin: (token: string, payload: unknown) =>
+    apiFetch("/admin/flash-deals", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
     }),
   createCategoryAdmin: (token: string, payload: unknown) =>
     apiFetch("/admin/categories", {

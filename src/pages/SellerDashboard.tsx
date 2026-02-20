@@ -259,7 +259,7 @@ function ProductDialog({
         price: 0,
         stock: 0,
         categoryId: "",
-        images: [""],
+        images: ["/placeholder.svg"],
     });
 
     // Reset/Sync form data when product changes or dialog opens
@@ -272,7 +272,7 @@ function ProductDialog({
                     price: product.price || 0,
                     stock: product.stock || 0,
                     categoryId: product.categoryId || "",
-                    images: product.images && product.images.length > 0 ? product.images : [""],
+                    images: product.images && product.images.length > 0 ? product.images : [product.image || "/placeholder.svg"],
                 });
             } else {
                 setFormData({
@@ -281,7 +281,7 @@ function ProductDialog({
                     price: 0,
                     stock: 0,
                     categoryId: "",
-                    images: [""],
+                    images: ["/placeholder.svg"],
                 });
             }
         }
@@ -305,7 +305,8 @@ function ProductDialog({
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        mutation.mutate(formData);
+        const normalizedImages = formData.images && formData.images.length > 0 ? formData.images : ["/placeholder.svg"];
+        mutation.mutate({ ...formData, images: normalizedImages });
     };
 
     return (
@@ -377,15 +378,8 @@ function ProductDialog({
                             </SelectContent>
                         </Select>
                     </div>
-                    <div>
-                        <Label htmlFor="image">Image URL</Label>
-                        <Input
-                            id="image"
-                            value={formData.images[0]}
-                            onChange={(e) => setFormData({ ...formData, images: [e.target.value] })}
-                            placeholder="https://example.com/image.jpg"
-                            required
-                        />
+                    <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                        Product images are managed automatically. A default image will be used if none are provided.
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

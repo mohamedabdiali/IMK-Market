@@ -264,7 +264,7 @@ export default function EnhancedLogin() {
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
-                    navigate(resolveRedirect("/account"));
+                    navigate("/account");
                 }
             } else {
                 toast.error("Invalid credentials");
@@ -296,7 +296,7 @@ export default function EnhancedLogin() {
             });
             if (success) {
                 toast.success("Account created successfully.");
-                navigate(resolveRedirect("/account"));
+                navigate("/account");
             } else {
                 toast.error("Registration failed");
             }
@@ -313,7 +313,7 @@ export default function EnhancedLogin() {
             const result = await loginCustomer(demoCustomerPhone, demoCustomerPassword);
             if (result.success) {
                 toast.success("Signed in with demo account");
-                navigate(resolveRedirect("/account"));
+                navigate("/account");
             } else {
                 toast.error("Demo login failed");
             }

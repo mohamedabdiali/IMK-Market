@@ -25,6 +25,13 @@ const products = [
   { id: '6', name: 'Coffee Maker', description: 'Premium automatic coffee maker machine', price: 129.99, originalPrice: 179.99, image: 'https://images.unsplash.com/photo-1517668808822-9ebb02ae2a0e?w=400&h=400&fit=crop', images: ['https://images.unsplash.com/photo-1517668808822-9ebb02ae2a0e?w=400&h=400&fit=crop', 'https://images.unsplash.com/photo-1517668808822-9ebb02ae2a0e?w=400&h=400&fit=crop'], categoryId: 'c3', rating: 4.7, reviewCount: 9, inStock: true, freeShipping: true, badge: 'Top Rated', status: 'active', createdAt: new Date().toISOString() },
 ];
 
+const flashDeals = {
+  title: 'Flash Deals',
+  subtitle: 'Limited time offers - up to 30% off.',
+  endsAt: null,
+  productIds: [],
+};
+
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 app.get('/api/categories', (req, res) => {
@@ -35,6 +42,10 @@ app.get('/api/categories', (req, res) => {
   };
   const result = categories.map(c => ({ id: c.id, name: c.name, image: categoryImages[c.id] || c.image, productCount: products.filter(p => p.categoryId === c.id).length }));
   res.json(result);
+});
+
+app.get('/api/flash-deals', (_req, res) => {
+  res.json(flashDeals);
 });
 
 app.get('/api/products', (req, res) => {

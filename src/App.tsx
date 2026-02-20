@@ -30,6 +30,7 @@ import AdminProductManagement from "./pages/admin/AdminProductManagement";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminBulkOperations from "./pages/admin/AdminBulkOperations";
 import AdminEmail from "./pages/admin/AdminEmail";
+import AdminFlashDeals from "./pages/admin/AdminFlashDeals";
 
 // New RBAC Components
 import EnhancedLogin from "./pages/EnhancedLogin";
@@ -83,6 +84,7 @@ const App = () => (
                 <Route path="/admin/product-management" element={<ProtectedRoute><AdminProductManagement /></ProtectedRoute>} />
                 <Route path="/admin/inventory" element={<ProtectedRoute><AdminInventory /></ProtectedRoute>} />
                 <Route path="/admin/categories" element={<ProtectedRoute><AdminCategories /></ProtectedRoute>} />
+                <Route path="/admin/flash-deals" element={<ProtectedRoute><AdminFlashDeals /></ProtectedRoute>} />
                 <Route path="/admin/bulk-operations" element={<ProtectedRoute><AdminBulkOperations /></ProtectedRoute>} />
                 <Route path="/admin/email" element={<ProtectedRoute><AdminEmail /></ProtectedRoute>} />
                 <Route path="/admin/analytics" element={<ProtectedRoute><AdminAnalytics /></ProtectedRoute>} />

@@ -619,6 +619,10 @@ app.get('/api/categories', (req, res) => {
   res.json(result);
 });
 
+app.get('/api/flash-deals', (_req, res) => {
+  res.json(getFlashDealsSetting());
+});
+
 app.get('/api/products', (req, res) => {
   const { category, q, sort, minPrice, maxPrice, rating, inStock } = req.query;
   let result = products.slice();
@@ -1405,6 +1409,45 @@ const mockSettings = [
   { id: 'setting-1', key: 'support_email', value: 'info@imkmarket.com', updatedAt: nowIso() },
 ];
 
+const defaultFlashDeals = {
+  title: 'Flash Deals',
+  subtitle: 'Limited time offers - up to 30% off.',
+  endsAt: null,
+  productIds: [],
+};
+
+const normalizeFlashDeals = (value) => {
+  const safe = value && typeof value === 'object' ? value : {};
+  const title = typeof safe.title === 'string' && safe.title.trim().length ? safe.title.trim() : defaultFlashDeals.title;
+  const subtitle =
+    typeof safe.subtitle === 'string' && safe.subtitle.trim().length ? safe.subtitle.trim() : defaultFlashDeals.subtitle;
+  const endsAt =
+    typeof safe.endsAt === 'string' && !Number.isNaN(new Date(safe.endsAt).getTime())
+      ? new Date(safe.endsAt).toISOString()
+      : null;
+  const productIds = Array.from(
+    new Set(Array.isArray(safe.productIds) ? safe.productIds.map((id) => String(id).trim()).filter(Boolean) : [])
+  );
+  return { title, subtitle, endsAt, productIds };
+};
+
+const getFlashDealsSetting = () => {
+  const existing = mockSettings.find((setting) => setting.key === 'flash_deals');
+  return normalizeFlashDeals(existing ? existing.value : defaultFlashDeals);
+};
+
+const setFlashDealsSetting = (payload) => {
+  const value = normalizeFlashDeals(payload);
+  const existing = mockSettings.find((setting) => setting.key === 'flash_deals');
+  if (existing) {
+    existing.value = value;
+    existing.updatedAt = nowIso();
+    return value;
+  }
+  mockSettings.unshift({ id: createId('SET', 3), key: 'flash_deals', value, updatedAt: nowIso() });
+  return value;
+};
+
 const mockFeatureToggles = [
   { id: 'toggle-1', key: 'seller_approvals', enabled: true, description: 'Require seller approvals', updatedAt: nowIso() },
 ];
@@ -2171,6 +2214,15 @@ app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
   });
   categories = categories.filter((c) => c.id !== existing.id);
   res.json({ id: req.params.id });
+});
+
+app.get('/api/admin/flash-deals', requireAdmin, (_req, res) => {
+  res.json(getFlashDealsSetting());
+});
+
+app.put('/api/admin/flash-deals', requireAdmin, (req, res) => {
+  const value = setFlashDealsSetting(req.body || {});
+  res.json(value);
 });
 
 app.get('/api/admin/email-history', requireAdmin, (_req, res) => {

@@ -164,6 +164,49 @@ function createTrackingNumber() {
   return `TRK-${nanoid(10).toUpperCase()}`;
 }
 
+const DEFAULT_FLASH_DEALS = {
+  title: "Flash Deals",
+  subtitle: "Limited time offers - up to 30% off.",
+  endsAt: null as string | null,
+  productIds: [] as string[],
+};
+
+const normalizeFlashDeals = (value: unknown) => {
+  const parsed = z
+    .object({
+      title: z.string().optional(),
+      subtitle: z.string().optional(),
+      endsAt: z.string().nullable().optional(),
+      productIds: z.array(z.string()).optional(),
+    })
+    .safeParse(value ?? {});
+
+  if (!parsed.success) return { ...DEFAULT_FLASH_DEALS };
+
+  const title = parsed.data.title?.trim() || DEFAULT_FLASH_DEALS.title;
+  const subtitle = parsed.data.subtitle?.trim() || DEFAULT_FLASH_DEALS.subtitle;
+  const endsAt = parsed.data.endsAt
+    ? Number.isNaN(new Date(parsed.data.endsAt).getTime())
+      ? null
+      : new Date(parsed.data.endsAt).toISOString()
+    : null;
+  const productIds = Array.from(
+    new Set((parsed.data.productIds ?? []).map((id) => id.trim()).filter(Boolean))
+  );
+
+  return {
+    title,
+    subtitle,
+    endsAt,
+    productIds,
+  };
+};
+
+const fetchFlashDealsSetting = async () => {
+  const setting = await prisma.systemSetting.findUnique({ where: { key: "flash_deals" } });
+  return normalizeFlashDeals(setting?.value);
+};
+
 const ORDER_STATUSES = ["pending", "processing", "shipped", "delivered", "cancelled"] as const;
 type OrderStatus = (typeof ORDER_STATUSES)[number];
 const PAYMENT_METHODS = ["cod", "orange_money", "afrimoney", "qmoney", "paystack", "stripe"] as const;
@@ -653,6 +696,16 @@ app.get("/api/categories", async (_req, res) => {
   } catch (e) {
     console.error("Fetch categories error", e);
     res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+app.get("/api/flash-deals", async (_req, res) => {
+  try {
+    const deals = await fetchFlashDealsSetting();
+    res.json(deals);
+  } catch (e) {
+    console.error("Fetch flash deals error", e);
+    res.status(500).json({ error: "Failed to fetch flash deals" });
   }
 });
 
@@ -2258,6 +2311,42 @@ app.delete("/api/admin/categories/:id", requireAdmin, requirePermission("product
   } catch (e) {
     console.error("Delete category error", e);
     res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
+app.get("/api/admin/flash-deals", requireAdmin, requirePermission("marketing", "view"), async (_req, res) => {
+  try {
+    const deals = await fetchFlashDealsSetting();
+    res.json(deals);
+  } catch (e) {
+    console.error("Fetch admin flash deals error", e);
+    res.status(500).json({ error: "Failed to fetch flash deals" });
+  }
+});
+
+app.put("/api/admin/flash-deals", requireAdmin, requirePermission("marketing", "edit"), async (req, res) => {
+  const parsed = z
+    .object({
+      title: z.string().optional(),
+      subtitle: z.string().optional(),
+      endsAt: z.string().nullable().optional(),
+      productIds: z.array(z.string()).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  try {
+    const value = normalizeFlashDeals(parsed.data);
+    const updated = await prisma.systemSetting.upsert({
+      where: { key: "flash_deals" },
+      update: { value },
+      create: { key: "flash_deals", value },
+    });
+    res.json(updated.value);
+  } catch (e) {
+    console.error("Update flash deals error", e);
+    res.status(500).json({ error: "Failed to update flash deals" });
   }
 });
 

@@ -1,6 +1,7 @@
 import { Clock, Flame, Gift, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Product } from "@/types/product";
@@ -31,6 +32,12 @@ const RAMADAN_FEATURES = [
 ];
 
 export function DealsSection() {
+  const { data: flashDeals } = useQuery({
+    queryKey: ["flash-deals"],
+    queryFn: () => api.getFlashDeals(),
+    refetchOnWindowFocus: true,
+    refetchOnMount: "always",
+  });
   const {
     data: products = [],
     isLoading,
@@ -44,10 +51,30 @@ export function DealsSection() {
     refetchOnMount: "always",
   });
   const productList = products as Product[];
+  const flashDealIds = useMemo(() => {
+    if (!flashDeals || typeof flashDeals !== "object") return new Set<string>();
+    const ids = (flashDeals as { productIds?: string[] }).productIds || [];
+    return new Set(ids.filter((id) => typeof id === "string"));
+  }, [flashDeals]);
+  const manualDeals = flashDealIds.size
+    ? productList.filter((p) => flashDealIds.has(p.id))
+    : [];
   const discountedProducts = productList.filter(
     (p) => typeof p.originalPrice === "number" && p.originalPrice > p.price
   );
-  const dealProducts = (discountedProducts.length ? discountedProducts : productList).slice(0, 6);
+  const dealProducts = (manualDeals.length ? manualDeals : discountedProducts.length ? discountedProducts : productList).slice(0, 6);
+  const dealTitle =
+    flashDeals && typeof flashDeals === "object" && "title" in flashDeals && typeof flashDeals.title === "string"
+      ? flashDeals.title
+      : "Flash Deals";
+  const dealSubtitle =
+    flashDeals && typeof flashDeals === "object" && "subtitle" in flashDeals && typeof flashDeals.subtitle === "string"
+      ? flashDeals.subtitle
+      : "Limited time offers - up to 30% off.";
+  const dealCountdown =
+    flashDeals && typeof flashDeals === "object" && "endsAt" in flashDeals && typeof flashDeals.endsAt === "string"
+      ? new Date(flashDeals.endsAt as string).toLocaleDateString()
+      : "23:59:42";
 
   return (
     <section className="py-12">
@@ -59,15 +86,17 @@ export function DealsSection() {
                 <Flame className="h-6 w-6 text-destructive" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold">Flash Deals</h2>
-                <p className="text-muted-foreground">Limited time offers - up to 30% off.</p>
+                <h2 className="text-2xl md:text-3xl font-bold">{dealTitle}</h2>
+                <p className="text-muted-foreground">{dealSubtitle}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 px-4 py-2 bg-card rounded-lg shadow-sm">
               <Clock className="h-5 w-5 text-destructive" />
-              <span className="font-mono font-bold text-lg">23:59:42</span>
-              <span className="text-sm text-muted-foreground">remaining</span>
+              <span className="font-mono font-bold text-lg">{dealCountdown}</span>
+              <span className="text-sm text-muted-foreground">
+                {dealCountdown === "23:59:42" ? "remaining" : "ends"}
+              </span>
             </div>
           </div>
 
