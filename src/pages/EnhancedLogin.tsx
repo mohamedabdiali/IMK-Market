@@ -128,7 +128,7 @@ export default function EnhancedLogin() {
         try {
             const result = await loginSeller(sellerData.email, sellerData.password);
             if (result.success) {
-                toast.success("Welcome back, Seller!");
+                toast.success("Welcome back, Partner!");
                 if (result.mustReset) {
                     navigate("/reset-password");
                 } else {
@@ -164,7 +164,7 @@ export default function EnhancedLogin() {
             try {
                 const result = await loginSellerWithGoogle(credential);
                 if (result.success) {
-                    toast.success("Welcome back, Seller!");
+                toast.success("Welcome back, Partner!");
                     if (result.mustReset) {
                         navigate("/reset-password");
                     } else {
@@ -181,7 +181,7 @@ export default function EnhancedLogin() {
                     return;
                 }
                 if (result.status === "not_registered") {
-                    toast.error("No seller account found. Please register first.");
+                    toast.error("No partner account found. Please register first.");
                     return;
                 }
                 toast.error(result.message || "Google sign-in failed");
@@ -559,17 +559,17 @@ export default function EnhancedLogin() {
                                 </div>
                                 <Button type="submit" className="w-full" disabled={isLoading}>
                                     {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Sign in as Seller
+                                    Sign in as Partner
                                 </Button>
                                 <p className="text-sm text-center text-muted-foreground">
-                                    Want to sell on IMK-Market?{" "}
+                                    Want to sell or supply on IMK-Market?{" "}
                                     <Button
                                         type="button"
                                         variant="link"
                                         className="p-0"
                                         onClick={() => navigate("/seller/register")}
                                     >
-                                        Register as Seller
+                                        Register as Partner
                                     </Button>
                                 </p>
                             </form>

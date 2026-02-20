@@ -312,6 +312,7 @@ router.post("/seller/register", async (req, res) => {
             name: z.string().min(2),
             phone: z.string().min(6),
             businessName: z.string().min(2),
+            businessType: z.enum(["seller", "supplier", "manufacturer"]).default("seller"),
             ownerName: z.string().min(2),
             businessAddress: z.string().min(10),
             productCategory: z.string().min(2),
@@ -378,6 +379,7 @@ router.post("/seller/register", async (req, res) => {
             data: {
                 userId: user.id,
                 businessName: parsed.data.businessName,
+                businessType: parsed.data.businessType,
                 ownerName: parsed.data.ownerName,
                 phone: parsed.data.phone,
                 businessAddress: parsed.data.businessAddress,
@@ -413,7 +415,7 @@ router.post("/seller/register", async (req, res) => {
         await notifySuperAdmins({
             type: "seller_registration",
             title: "New Seller Registration",
-            message: `${parsed.data.businessName} has registered and is awaiting approval`,
+            message: `${parsed.data.businessName} (${parsed.data.businessType}) has registered and is awaiting approval`,
             data: { sellerId: sellerProfile.id, userId: user.id },
         });
 
@@ -428,7 +430,7 @@ router.post("/seller/register", async (req, res) => {
                 tenantId: imkTenant.id,
                 type: "seller_registration",
                 title: "New Seller Registration",
-                message: `${parsed.data.businessName} has registered and is awaiting approval`,
+                message: `${parsed.data.businessName} (${parsed.data.businessType}) has registered and is awaiting approval`,
                 data: { sellerId: sellerProfile.id },
             });
         }

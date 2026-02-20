@@ -3,6 +3,7 @@ import { Product } from "@/types/product";
 import { useCart } from "@/context/CartContext";
 import { formatCurrency } from "@/lib/utils";
 import { ProductImageSlideshow } from "@/components/products/ProductImageSlideshow";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 import { Link } from "react-router-dom";
 
 interface DealProductCardProps {
@@ -55,6 +56,9 @@ export function DealProductCard({ product, discountCap }: DealProductCardProps) 
             </span>
           )}
         </div>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          MOQ {MIN_ORDER_QUANTITY} pcs
+        </p>
         <Button variant="cart" size="sm" className="w-full mt-3" onClick={() => addToCart(product)}>
           Add to Cart
         </Button>

@@ -749,12 +749,14 @@ router.post("/sellers/:id/approve", async (req: AuthRequest, res) => {
             },
         });
 
+        const accountType = sellerProfile.businessType || "seller";
+        const accountLabel = accountType.charAt(0).toUpperCase() + accountType.slice(1);
         // Notify seller
         await createNotification({
             userId: sellerProfile.userId,
             type: "seller_approved",
-            title: "Seller Account Approved",
-            message: "Congratulations! Your seller account has been approved. You can now start listing products.",
+            title: `${accountLabel} Account Approved`,
+            message: `Congratulations! Your ${accountType} account has been approved. You can now start listing products.`,
         });
 
         if (sellerProfile.user?.tenantId) {
@@ -762,8 +764,8 @@ router.post("/sellers/:id/approve", async (req: AuthRequest, res) => {
                 roleName: "Manager",
                 tenantId: sellerProfile.user.tenantId,
                 type: "seller_approved",
-                title: "Seller Approved",
-                message: `${sellerProfile.businessName} has been approved.`,
+                title: "Partner Approved",
+                message: `${sellerProfile.businessName} (${accountLabel}) has been approved.`,
                 data: { sellerId: sellerProfile.id },
             });
         }
@@ -825,12 +827,14 @@ router.post("/sellers/:id/reject", async (req: AuthRequest, res) => {
             },
         });
 
+        const accountType = sellerProfile.businessType || "seller";
+        const accountLabel = accountType.charAt(0).toUpperCase() + accountType.slice(1);
         // Notify seller
         await createNotification({
             userId: sellerProfile.userId,
             type: "seller_rejected",
-            title: "Seller Account Rejected",
-            message: `Your seller account application has been rejected. Reason: ${parsed.data.reason}`,
+            title: `${accountLabel} Account Rejected`,
+            message: `Your ${accountType} account application has been rejected. Reason: ${parsed.data.reason}`,
         });
 
         if (sellerProfile.user?.tenantId) {
@@ -838,8 +842,8 @@ router.post("/sellers/:id/reject", async (req: AuthRequest, res) => {
                 roleName: "Manager",
                 tenantId: sellerProfile.user.tenantId,
                 type: "seller_rejected",
-                title: "Seller Rejected",
-                message: `${sellerProfile.businessName} was rejected.`,
+                title: "Partner Rejected",
+                message: `${sellerProfile.businessName} (${accountLabel}) was rejected.`,
                 data: { sellerId: sellerProfile.id },
             });
         }

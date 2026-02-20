@@ -25,17 +25,17 @@ export function FeaturedProducts() {
   return (
     <section className="py-12 bg-secondary/30">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold">All Products</h2>
-            <p className="text-muted-foreground mt-1">Browse the full IMK-Market catalog</p>
+        <div className="text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold">All Products</h2>
+          <p className="text-muted-foreground mt-1">Browse the full IMK-Market catalog</p>
+          <div className="mt-3 hidden sm:flex justify-center">
+            <Link to="/products">
+              <Button variant="outline">
+                View All Products
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </Link>
           </div>
-          <Link to="/products">
-            <Button variant="outline" className="hidden sm:flex">
-              View All Products
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-4">

@@ -14,6 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ProductCard } from "@/components/products/ProductCard";
 import { ProductDetailGallery } from "@/components/products/ProductDetailGallery";
 import { formatCurrency } from "@/lib/utils";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -21,7 +22,7 @@ export default function ProductDetail() {
   const { isWishlisted, toggleWishlist } = useWishlist();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(MIN_ORDER_QUANTITY);
 
   const { data: product, isLoading } = useQuery({
     queryKey: ["product", id],
@@ -176,6 +177,9 @@ export default function ProductDetail() {
                   </span>
                 )}
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                MOQ: {MIN_ORDER_QUANTITY} pcs (minimum order quantity)
+              </p>
 
               {/* Quantity & Add to Cart */}
               <div className="space-y-4">
@@ -185,7 +189,7 @@ export default function ProductDetail() {
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      onClick={() => setQuantity(Math.max(MIN_ORDER_QUANTITY, quantity - 1))}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>

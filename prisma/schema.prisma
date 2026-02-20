@@ -132,6 +132,7 @@ model SellerProfile {
   userId          String    @unique
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName    String
+  businessType    String    @default("seller") // "seller" | "supplier" | "manufacturer"
   ownerName       String
   phone           String
   tradeLicense    String?

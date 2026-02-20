@@ -524,6 +524,7 @@ async function main() {
     create: {
       userId: demoSeller.id,
       businessName: "Demo Electronics Store",
+      businessType: "seller",
       ownerName: "John Doe",
       phone: "+971509876543",
       businessAddress: "Dubai, UAE",

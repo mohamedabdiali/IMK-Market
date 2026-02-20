@@ -124,7 +124,7 @@ function FlashAdPanel({ ad }: { ad: FlashAd }) {
 
   return (
     <div
-      className={`relative min-h-[360px] xl:min-h-[520px] overflow-hidden rounded-2xl border border-border/60 shadow-lg ${animationClass}`}
+      className={`relative h-full min-h-[360px] xl:min-h-[520px] overflow-hidden rounded-2xl border border-border/60 shadow-lg ${animationClass}`}
     >
       <div className="absolute inset-0">
         {hasMedia ? (
@@ -262,8 +262,8 @@ export function DealsSection() {
   return (
     <section className="pt-0 pb-0">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,220px)]">
-          <div className="order-2 lg:order-none lg:pt-8">
+        <div className="grid gap-4 items-stretch lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,220px)]">
+          <div className="order-2 lg:order-none h-full">
             <FlashAdPanel ad={leftAd} />
           </div>
 
@@ -366,7 +366,7 @@ export function DealsSection() {
             </div>
           </div>
 
-          <div className="order-3 lg:order-none lg:pt-8">
+          <div className="order-3 lg:order-none h-full">
             <FlashAdPanel ad={rightAd} />
           </div>
         </div>

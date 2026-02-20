@@ -1,25 +1,25 @@
-import { Truck, Shield, RotateCcw, Headphones } from "lucide-react";
+import { CreditCard, Headphones, ShieldCheck, Truck } from "lucide-react";
 
-const features = [
+const protections = [
   {
     icon: Truck,
-    title: "Free Shipping",
-    description: "On orders over Le 50",
+    title: "Shipping & logistics services",
+    description: "Coordinated shipping options with tracking and delivery support on eligible orders.",
   },
   {
-    icon: Shield,
-    title: "Secure Payment",
-    description: "100% secure checkout",
+    icon: CreditCard,
+    title: "Secure and diverse payment options",
+    description: "Pay by card, bank transfer, or local methods with encrypted checkout.",
   },
   {
-    icon: RotateCcw,
-    title: "Easy Returns",
-    description: "30-day return policy",
+    icon: ShieldCheck,
+    title: "Money-back policy",
+    description: "Refund support for eligible orders if shipments are late, damaged, or not as described.",
   },
   {
     icon: Headphones,
-    title: "24/7 Support",
-    description: "Dedicated support team",
+    title: "After-sales protection",
+    description: "Ongoing support for installation, maintenance, and replacement parts where available.",
   },
 ];
 
@@ -27,8 +27,14 @@ export function PromoSection() {
   return (
     <section className="py-12">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {features.map((feature, index) => (
+        <div className="text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold">Order Protections</h2>
+          <p className="text-muted-foreground mt-1">
+            Coverage across shipping, payments, refunds, and after-sales support.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {protections.map((feature, index) => (
             <div
               key={feature.title}
               className="flex flex-col items-center text-center p-6 bg-card rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fade-in"

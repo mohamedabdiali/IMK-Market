@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { Product, CartItem } from "@/types/product";
 import { toast } from "@/hooks/use-toast";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 
 interface CartContextType {
   items: CartItem[];
@@ -64,7 +65,7 @@ function parseCartItems(raw: string | null): CartItem[] {
           inStock: typeof item.inStock === "boolean" ? item.inStock : true,
           freeShipping: typeof item.freeShipping === "boolean" ? item.freeShipping : undefined,
           badge: typeof item.badge === "string" ? item.badge : undefined,
-          quantity: Math.floor(quantity),
+          quantity: Math.max(MIN_ORDER_QUANTITY, Math.floor(quantity)),
         } satisfies CartItem;
       })
       .filter((item): item is CartItem => Boolean(item));
@@ -98,14 +99,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const existingItem = currentItems.find((item) => item.id === product.id);
       
       if (existingItem) {
+        const nextQuantity = Math.max(existingItem.quantity + quantity, MIN_ORDER_QUANTITY);
         return currentItems.map((item) =>
           item.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: nextQuantity }
             : item
         );
       }
-      
-      return [...currentItems, { ...product, quantity }];
+
+      const normalizedQuantity = Math.max(quantity, MIN_ORDER_QUANTITY);
+      return [...currentItems, { ...product, quantity: normalizedQuantity }];
     });
     
     toast({
@@ -121,11 +124,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateQuantity = useCallback((productId: string, quantity: number) => {
-    if (quantity < 1) {
+    if (quantity <= 0) {
       removeFromCart(productId);
       return;
     }
-    
+
+    if (quantity < MIN_ORDER_QUANTITY) {
+      toast({
+        title: "Minimum order quantity",
+        description: `MOQ is ${MIN_ORDER_QUANTITY} pcs. Quantity adjusted to ${MIN_ORDER_QUANTITY}.`,
+      });
+      quantity = MIN_ORDER_QUANTITY;
+    }
+
     setItems((currentItems) =>
       currentItems.map((item) =>
         item.id === productId ? { ...item, quantity } : item

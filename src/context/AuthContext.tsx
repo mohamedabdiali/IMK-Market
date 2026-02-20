@@ -25,6 +25,7 @@ interface User {
   sellerProfile?: {
     id: string;
     businessName: string;
+    businessType?: "seller" | "supplier" | "manufacturer";
     status: string;
   };
   // Legacy fields for backward compatibility
@@ -49,6 +50,7 @@ interface SellerRegistrationPayload {
   name: string;
   phone: string;
   businessName: string;
+  businessType: "seller" | "supplier" | "manufacturer";
   ownerName: string;
   businessAddress: string;
   productCategory: string;

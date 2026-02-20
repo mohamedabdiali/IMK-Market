@@ -328,10 +328,10 @@ export default function Sell() {
           <div className="container text-center">
             <Package className="h-12 w-12 mx-auto text-accent mb-4" />
             <h1 className="text-3xl md:text-4xl font-bold text-primary-foreground mb-2">
-              Sell Your <span className="text-accent">Products</span>
+              Sell or Supply <span className="text-accent">Products</span>
             </h1>
             <p className="text-primary-foreground/80 max-w-xl mx-auto">
-              List your products on IMK-Market and reach thousands of customers across the globe.
+              List your products as a seller, supplier, or manufacturer and reach customers across the globe.
             </p>
           </div>
         </section>
@@ -340,16 +340,16 @@ export default function Sell() {
           <div className="container max-w-5xl">
             {!isAuthenticated && (
               <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
-                <h2 className="text-2xl font-bold">Seller Account Required</h2>
+                <h2 className="text-2xl font-bold">Partner Account Required</h2>
                 <p className="text-muted-foreground">
-                  Please sign in as a seller or register to submit products.
+                  Please sign in as a seller, supplier, or manufacturer to submit products.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Link to="/login?tab=seller" state={{ from: location }}>
-                    <Button variant="gold">Login as Seller</Button>
+                    <Button variant="gold">Login as Partner</Button>
                   </Link>
                   <Link to="/seller/register">
-                    <Button variant="outline">Register as Seller</Button>
+                    <Button variant="outline">Register as Partner</Button>
                   </Link>
                 </div>
               </div>
@@ -357,13 +357,13 @@ export default function Sell() {
 
             {isAuthenticated && !isSeller && (
               <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
-                <h2 className="text-2xl font-bold">Seller Approval Needed</h2>
+                <h2 className="text-2xl font-bold">Partner Approval Needed</h2>
                 <p className="text-muted-foreground">
-                  Your account is not a seller yet. Register as a seller to submit products.
+                  Your account is not a partner yet. Register as a seller, supplier, or manufacturer to submit products.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Link to="/seller/register">
-                    <Button variant="gold">Register as Seller</Button>
+                    <Button variant="gold">Register as Partner</Button>
                   </Link>
                 </div>
               </div>
@@ -371,13 +371,13 @@ export default function Sell() {
 
             {isAuthenticated && isSeller && sellerStatus !== "active" && (
               <div className="bg-card rounded-xl border border-border p-6 md:p-8 text-center space-y-4">
-                <h2 className="text-2xl font-bold">Seller Status: {sellerStatus || "pending"}</h2>
+                <h2 className="text-2xl font-bold">Partner Status: {sellerStatus || "pending"}</h2>
                 <p className="text-muted-foreground">
-                  Your seller account is not active yet. Once approved, you can list products here.
+                  Your partner account is not active yet. Once approved, you can list products here.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Link to="/seller">
-                    <Button variant="outline">View Seller Dashboard</Button>
+                    <Button variant="outline">View Partner Dashboard</Button>
                   </Link>
                 </div>
               </div>

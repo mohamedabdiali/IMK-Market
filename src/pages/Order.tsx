@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { formatCurrency } from "@/lib/utils";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 
 const cargoTypes = [
   { value: "air", label: "Air Cargo" },
@@ -382,6 +383,16 @@ export default function Order() {
       });
       return;
     }
+    const belowMoq = items.filter((item) => item.quantity < MIN_ORDER_QUANTITY);
+    if (belowMoq.length > 0) {
+      belowMoq.forEach((item) => updateQuantity(item.id, MIN_ORDER_QUANTITY));
+      toast({
+        title: "Minimum order quantity enforced",
+        description: `All items require at least ${MIN_ORDER_QUANTITY} pcs.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (isImageProcessing || isVideoProcessing) {
       toast({
@@ -492,6 +503,7 @@ export default function Order() {
                                 size="icon"
                                 className="h-8 w-8"
                                 onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                disabled={item.quantity <= MIN_ORDER_QUANTITY}
                               >
                                 <Minus className="h-3 w-3" />
                               </Button>
@@ -504,6 +516,9 @@ export default function Order() {
                               >
                                 <Plus className="h-3 w-3" />
                               </Button>
+                              <span className="text-[10px] text-muted-foreground">
+                                MOQ {MIN_ORDER_QUANTITY}
+                              </span>
                               <Button
                                 variant="ghost"
                                 size="sm"

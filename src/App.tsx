@@ -19,6 +19,7 @@ import TrackOrder from "./pages/TrackOrder";
 import MarketPrices from "./pages/MarketPrices";
 import Wishlist from "./pages/Wishlist";
 import CustomerDashboard from "./pages/CustomerDashboard";
+import Policies from "./pages/Policies";
 
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -64,6 +65,7 @@ const App = () => (
                 <Route path="/order" element={<Order />} />
                 <Route path="/track-order" element={<TrackOrder />} />
                 <Route path="/market-prices" element={<MarketPrices />} />
+                <Route path="/policies" element={<Policies />} />
 
                 {/* Enhanced Authentication Routes */}
                 <Route path="/login" element={<EnhancedLogin />} />

@@ -47,6 +47,7 @@ export function Footer() {
             <h3 className="font-semibold mb-4">Customer Service</h3>
             <ul className="space-y-2 text-sm text-primary-foreground/70">
               <li><Link to="/help" className="hover:text-accent transition-colors">Help Center</Link></li>
+              <li><Link to="/policies" className="hover:text-accent transition-colors">Policies & Procedures</Link></li>
               <li><Link to="/shipping" className="hover:text-accent transition-colors">Shipping Info</Link></li>
               <li><Link to="/returns" className="hover:text-accent transition-colors">Returns & Refunds</Link></li>
               <li><Link to="/track" className="hover:text-accent transition-colors">Track Order</Link></li>

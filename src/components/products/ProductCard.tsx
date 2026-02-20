@@ -5,6 +5,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { useAuth } from "@/context/AuthContext";
 import { formatCurrency } from "@/lib/utils";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 import { Link } from "react-router-dom";
 import { ProductImageSlideshow } from "@/components/products/ProductImageSlideshow";
 
@@ -111,6 +112,9 @@ export function ProductCard({ product }: ProductCardProps) {
             </span>
           )}
         </div>
+        <p className="text-[9px] text-muted-foreground mt-1">
+          MOQ {MIN_ORDER_QUANTITY} pcs
+        </p>
 
         <Button variant="cart" size="sm" className="w-full h-7 mt-1" onClick={() => addToCart(product)}>
           <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />

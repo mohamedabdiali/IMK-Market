@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Store } from "lucide-react";
 
@@ -19,6 +20,7 @@ export default function SellerRegistration() {
         name: "",
         phone: "",
         businessName: "",
+        businessType: "seller",
         ownerName: "",
         businessAddress: "",
         productCategory: "",
@@ -60,9 +62,9 @@ export default function SellerRegistration() {
                     <div className="flex items-center justify-center mb-4">
                         <Store className="h-12 w-12 text-primary" />
                     </div>
-                    <CardTitle className="text-2xl text-center">Seller Registration</CardTitle>
+                    <CardTitle className="text-2xl text-center">Partner Registration</CardTitle>
                     <CardDescription className="text-center">
-                        Register your business to start selling on IMK-Market
+                        Register as a seller, supplier, or manufacturer to join IMK-Market
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -139,6 +141,22 @@ export default function SellerRegistration() {
                                         required
                                     />
                                 </div>
+                            </div>
+                            <div>
+                                <Label htmlFor="businessType">Business Type *</Label>
+                                <Select
+                                    value={formData.businessType}
+                                    onValueChange={(value) => setFormData({ ...formData, businessType: value })}
+                                >
+                                    <SelectTrigger id="businessType">
+                                        <SelectValue placeholder="Select business type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="seller">Seller</SelectItem>
+                                        <SelectItem value="supplier">Supplier</SelectItem>
+                                        <SelectItem value="manufacturer">Manufacturer</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div>
                                 <Label htmlFor="businessAddress">Business Address *</Label>
@@ -230,7 +248,7 @@ export default function SellerRegistration() {
 
                         <Button type="submit" className="w-full" disabled={isLoading}>
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isLoading ? "Registering..." : "Register as Seller"}
+                            {isLoading ? "Registering..." : "Submit Registration"}
                         </Button>
 
                         <p className="text-sm text-center text-muted-foreground">

@@ -98,6 +98,7 @@ const PAYMENT_WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET || "dev-webhoo
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
 const CURRENCY_SYMBOL = process.env.CURRENCY_SYMBOL || "Le";
+const MIN_ORDER_QUANTITY = 10;
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2022-11-15" }) : null;
 
@@ -486,7 +487,7 @@ function resolveStatusLocation(
 const orderItemSchema = z.object({
   productId: z.union([z.string(), z.number()]).optional(),
   productName: z.string().min(1),
-  quantity: z.number().int().min(1),
+  quantity: z.number().int().min(MIN_ORDER_QUANTITY),
   price: z.number().min(0),
 });
 type OrderItemPayload = z.infer<typeof orderItemSchema>;

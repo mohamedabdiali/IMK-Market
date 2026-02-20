@@ -105,6 +105,7 @@ interface DashboardStats {
 interface PendingSeller {
   id: string;
   businessName: string;
+  businessType?: string;
   ownerName: string;
   phone?: string;
   productCategory: string;
@@ -238,7 +239,7 @@ export default function SuperAdminDashboard() {
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="roles">Roles</TabsTrigger>
             <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
-            <TabsTrigger value="sellers">Seller Approvals</TabsTrigger>
+            <TabsTrigger value="sellers">Partner Approvals</TabsTrigger>
             <TabsTrigger value="settings">System Settings</TabsTrigger>
             <TabsTrigger value="features">Feature Toggles</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
@@ -355,7 +356,7 @@ function DashboardTab({ token }: { token: string | null }) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.totalUsers || 0}</div>
-            <p className="text-xs text-muted-foreground">{stats?.totalSellers || 0} sellers</p>
+            <p className="text-xs text-muted-foreground">{stats?.totalSellers || 0} partners</p>
           </CardContent>
         </Card>
         <Card>
@@ -384,8 +385,8 @@ function DashboardTab({ token }: { token: string | null }) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Pending Seller Approvals</CardTitle>
-              <CardDescription>Review and approve new seller registrations</CardDescription>
+              <CardTitle>Pending Partner Approvals</CardTitle>
+              <CardDescription>Review and approve new seller, supplier, and manufacturer registrations</CardDescription>
             </div>
             {stats && stats.pendingSellers > 0 && (
               <Badge variant="destructive" className="flex items-center gap-1">
@@ -401,7 +402,7 @@ function DashboardTab({ token }: { token: string | null }) {
           ) : !pendingSellers || pendingSellers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <UserCheck className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No pending seller approvals</p>
+              <p>No pending partner approvals</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -410,6 +411,10 @@ function DashboardTab({ token }: { token: string | null }) {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h4 className="font-semibold">{seller.businessName}</h4>
+                      <Badge variant="secondary">
+                        {(seller.businessType || "seller").charAt(0).toUpperCase() +
+                          (seller.businessType || "seller").slice(1)}
+                      </Badge>
                       <Badge variant="outline">{seller.productCategory}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -1673,8 +1678,8 @@ function SellersTab({ token, isActive }: { token: string | null; isActive: boole
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Seller Approvals</h2>
-        <p className="text-sm text-muted-foreground">Approve or reject new seller registrations.</p>
+        <h2 className="text-xl font-semibold">Partner Approvals</h2>
+        <p className="text-sm text-muted-foreground">Approve or reject new seller, supplier, and manufacturer registrations.</p>
       </div>
 
       <Card>
@@ -1688,6 +1693,7 @@ function SellersTab({ token, isActive }: { token: string | null; isActive: boole
               <TableHeader>
                 <TableRow>
                   <TableHead>Business</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Owner</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Category</TableHead>
@@ -1701,6 +1707,9 @@ function SellersTab({ token, isActive }: { token: string | null; isActive: boole
                     <TableCell>
                       <div className="font-medium">{seller.businessName}</div>
                       <div className="text-xs text-muted-foreground">{seller.user.email}</div>
+                    </TableCell>
+                    <TableCell className="capitalize">
+                      {seller.businessType || "seller"}
                     </TableCell>
                     <TableCell>{seller.ownerName}</TableCell>
                     <TableCell>{seller.phone || seller.user.phone || "—"}</TableCell>

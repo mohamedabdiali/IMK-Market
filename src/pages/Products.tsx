@@ -322,7 +322,7 @@ export default function Products() {
       <main className="flex-1">
         {/* Hero */}
         <section className="bg-primary py-8">
-          <div className="container">
+          <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
             <h1 className="text-2xl md:text-3xl font-bold text-primary-foreground">
               All <span className="text-accent">Products</span>
             </h1>
@@ -332,7 +332,7 @@ export default function Products() {
           </div>
         </section>
 
-        <div className="container py-8">
+        <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6 py-8">
           <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
             <SheetContent side="left" className="w-full sm:max-w-sm">
               <SheetHeader className="border-b pb-4">

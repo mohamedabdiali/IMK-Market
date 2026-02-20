@@ -4,6 +4,7 @@ import { useCart } from "@/context/CartContext";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
+import { MIN_ORDER_QUANTITY } from "@/lib/constants";
 
 export function CartDrawer() {
   const { items, isCartOpen, setIsCartOpen, removeFromCart, updateQuantity, totalPrice, totalItems } = useCart();
@@ -56,6 +57,7 @@ export function CartDrawer() {
                         size="icon"
                         className="h-8 w-8"
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        disabled={item.quantity <= MIN_ORDER_QUANTITY}
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
@@ -70,6 +72,9 @@ export function CartDrawer() {
                       >
                         <Plus className="h-3 w-3" />
                       </Button>
+                      <span className="text-[10px] text-muted-foreground">
+                        MOQ {MIN_ORDER_QUANTITY}
+                      </span>
                       <Button
                         variant="ghost"
                         size="icon"

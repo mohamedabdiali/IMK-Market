@@ -31,18 +31,18 @@ export function CategoryGrid() {
   return (
     <section className="pt-0 pb-6">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold">Shop by Category</h2>
-            <p className="text-muted-foreground mt-1">Explore our wide range of products</p>
+        <div className="text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold">Shop by Category</h2>
+          <p className="text-muted-foreground mt-1">Explore our wide range of products</p>
+          <div className="mt-3 hidden sm:flex justify-center">
+            <Link
+              to="/products"
+              className="inline-flex items-center gap-1 text-primary font-medium hover:text-accent transition-colors"
+            >
+              View All
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
-          <Link
-            to="/products"
-            className="hidden sm:flex items-center gap-1 text-primary font-medium hover:text-accent transition-colors"
-          >
-            View All
-            <ArrowRight className="h-4 w-4" />
-          </Link>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
