@@ -260,7 +260,7 @@ export function DealsSection() {
       : "23:59:42";
 
   return (
-    <section className="pt-0 pb-0">
+    <section className="pt-4 pb-2">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
         <div className="grid gap-4 items-stretch lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,220px)]">
           <div className="order-2 lg:order-none h-full">

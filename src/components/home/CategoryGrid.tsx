@@ -29,7 +29,7 @@ export function CategoryGrid() {
     (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:"));
 
   return (
-    <section className="pt-0 pb-6">
+    <section className="pt-4 pb-6">
       <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
         <div className="text-center mb-8">
           <h2 className="text-2xl md:text-3xl font-bold">Shop by Category</h2>
