@@ -260,9 +260,9 @@ export function DealsSection() {
       : "23:59:42";
 
   return (
-    <section className="py-12">
-      <div className="mx-auto w-full max-w-[1600px] px-4">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_minmax(0,240px)]">
+    <section className="pt-0 pb-0">
+      <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,220px)]">
           <div className="order-2 lg:order-none lg:pt-8">
             <FlashAdPanel ad={leftAd} />
           </div>

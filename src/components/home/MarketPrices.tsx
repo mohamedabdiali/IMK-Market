@@ -31,7 +31,7 @@ const priceItems = [
 export function MarketPrices() {
   return (
     <section className="py-12 bg-secondary/50">
-      <div className="container">
+      <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
         <div className="text-center mb-8">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground">Current Market Prices</h2>
           <p className="text-muted-foreground mt-2">Live prices updated in real-time</p>

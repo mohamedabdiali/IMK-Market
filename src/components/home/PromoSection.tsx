@@ -26,7 +26,7 @@ const features = [
 export function PromoSection() {
   return (
     <section className="py-12">
-      <div className="container">
+      <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((feature, index) => (
             <div

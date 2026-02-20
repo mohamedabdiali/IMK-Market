@@ -5,7 +5,7 @@ export function Footer() {
   return (
     <footer className="bg-primary text-primary-foreground">
       {/* Main footer */}
-      <div className="container py-12">
+      <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand */}
           <div>
@@ -77,7 +77,7 @@ export function Footer() {
 
       {/* Connect with us */}
       <div className="border-t border-primary-foreground/10">
-        <div className="container py-4">
+        <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6 py-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
             <p className="text-primary-foreground/60">
               © 2024 IMK-MARKET. All rights reserved.

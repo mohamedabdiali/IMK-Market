@@ -29,8 +29,8 @@ export function CategoryGrid() {
     (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:"));
 
   return (
-    <section className="py-6">
-      <div className="container">
+    <section className="pt-0 pb-6">
+      <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold">Shop by Category</h2>

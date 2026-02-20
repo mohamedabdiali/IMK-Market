@@ -70,7 +70,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full">
       {/* Top bar */}
       <div className="bg-primary text-primary-foreground">
-        <div className="container flex h-10 items-center justify-between text-xs">
+        <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6 flex h-10 items-center justify-between text-xs">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Phone className="h-3 w-3" />
@@ -122,7 +122,7 @@ export function Header() {
 
       {/* Main header */}
       <div className="bg-card shadow-md">
-        <div className="container flex h-16 items-center justify-between gap-4">
+        <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6 flex h-16 items-center justify-between gap-4">
           {/* Logo */}
           <Link to="/" className="flex items-center shrink-0">
             <img
@@ -199,7 +199,7 @@ export function Header() {
 
       {/* Navigation */}
       <nav className="bg-primary hidden md:block">
-        <div className="container">
+        <div className="mx-auto w-full max-w-[1920px] px-2 sm:px-4 lg:px-6">
           <ul className="flex items-center gap-1">
             {navItems.map((item) => (
               <li key={item.href}>
