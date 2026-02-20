@@ -21,6 +21,11 @@ import Wishlist from "./pages/Wishlist";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import Policies from "./pages/Policies";
 import Solutions from "./pages/Solutions";
+import Partners from "./pages/Partners";
+import Suppliers from "./pages/Suppliers";
+import Manufacturers from "./pages/Manufacturers";
+import ShippingInfo from "./pages/ShippingInfo";
+import ReturnsRefunds from "./pages/ReturnsRefunds";
 
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -61,6 +66,11 @@ const App = () => (
                 <Route path="/wishlist" element={<Wishlist />} />
                 <Route path="/account" element={<CustomerDashboard />} />
                 <Route path="/solutions" element={<Solutions />} />
+                <Route path="/partners" element={<Partners />} />
+                <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/manufacturers" element={<Manufacturers />} />
+                <Route path="/shipping" element={<ShippingInfo />} />
+                <Route path="/returns" element={<ReturnsRefunds />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/sell" element={<Sell />} />
