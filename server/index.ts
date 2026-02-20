@@ -458,11 +458,11 @@ function customerPhoneToEmail(phone: string) {
 }
 
 function isValidImageMedia(value: string) {
-  return value.startsWith("data:image/") || /^https?:\/\//i.test(value);
+  return value.startsWith("data:image/") || /^https?:\/\//i.test(value) || value.startsWith("/assets/");
 }
 
 function isValidVideoMedia(value: string) {
-  return value.startsWith("data:video/") || /^https?:\/\//i.test(value);
+  return value.startsWith("data:video/") || /^https?:\/\//i.test(value) || value.startsWith("/assets/");
 }
 
 function resolveEstimatedDelivery(cargoType?: string | null, from = new Date()) {
@@ -2220,7 +2220,7 @@ app.get("/api/admin/products", requireAdmin, requirePermission("products", "view
 });
 
 app.post("/api/admin/products", requireAdmin, requirePermission("products", "create"), async (req, res) => {
-  const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
+  const imageSchema = z.string().min(1).refine((val) => isValidImageMedia(val), {
     message: "Image must be a URL or data URI",
   });
   const videoSchema = z.string().min(1).refine((val) => isValidVideoMedia(val), {
@@ -2307,7 +2307,7 @@ app.post("/api/admin/products", requireAdmin, requirePermission("products", "cre
 });
 
 app.patch("/api/admin/products/:id", requireAdmin, requirePermission("products", "edit"), async (req, res) => {
-  const imageSchema = z.string().min(1).refine((val) => val.startsWith("data:") || val.startsWith("http"), {
+  const imageSchema = z.string().min(1).refine((val) => isValidImageMedia(val), {
     message: "Image must be a URL or data URI",
   });
   const videoSchema = z.string().min(1).refine((val) => isValidVideoMedia(val), {

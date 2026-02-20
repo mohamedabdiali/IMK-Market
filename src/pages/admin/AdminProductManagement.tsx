@@ -286,7 +286,9 @@ export default function AdminProductManagement() {
       });
       return;
     }
-    const invalidImage = normalizedImages.find((img) => !(img.startsWith("data:") || img.startsWith("http")));
+    const invalidImage = normalizedImages.find(
+      (img) => !(img.startsWith("data:") || img.startsWith("http") || img.startsWith("/assets/"))
+    );
     if (invalidImage) {
       toast({
         title: "Invalid image",
@@ -295,7 +297,9 @@ export default function AdminProductManagement() {
       });
       return;
     }
-    const invalidVideo = normalizedVideos.find((video) => !(video.startsWith("data:") || video.startsWith("http")));
+    const invalidVideo = normalizedVideos.find(
+      (video) => !(video.startsWith("data:") || video.startsWith("http") || video.startsWith("/assets/"))
+    );
     if (invalidVideo) {
       toast({
         title: "Invalid video",
@@ -602,7 +606,9 @@ export default function AdminProductManagement() {
       });
       return;
     }
-    const invalidImage = normalizedImages.find((img) => !(img.startsWith("data:") || img.startsWith("http")));
+    const invalidImage = normalizedImages.find(
+      (img) => !(img.startsWith("data:") || img.startsWith("http") || img.startsWith("/assets/"))
+    );
     if (invalidImage) {
       toast({
         title: "Invalid image",
@@ -611,7 +617,9 @@ export default function AdminProductManagement() {
       });
       return;
     }
-    const invalidVideo = normalizedVideos.find((video) => !(video.startsWith("data:") || video.startsWith("http")));
+    const invalidVideo = normalizedVideos.find(
+      (video) => !(video.startsWith("data:") || video.startsWith("http") || video.startsWith("/assets/"))
+    );
     if (invalidVideo) {
       toast({
         title: "Invalid video",
