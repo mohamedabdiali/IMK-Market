@@ -20,6 +20,7 @@ import MarketPrices from "./pages/MarketPrices";
 import Wishlist from "./pages/Wishlist";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import Policies from "./pages/Policies";
+import Solutions from "./pages/Solutions";
 
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -59,6 +60,7 @@ const App = () => (
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/wishlist" element={<Wishlist />} />
                 <Route path="/account" element={<CustomerDashboard />} />
+                <Route path="/solutions" element={<Solutions />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/sell" element={<Sell />} />
