@@ -97,7 +97,7 @@
     {
       "id": "shop-cat-001",
       "name": "Shop",
-      "image": "/assets/categories/shop/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&q=80",
       "createdAt": "2026-02-20T18:23:58.138Z"
     }
   ],
@@ -4520,7 +4520,7 @@
       "description": "This is a high-quality product description for Premium Product 1. It features exceptional durability and modern design.",
       "price": 362,
       "originalPrice": 337,
-      "image": "/assets/products/new-prod-001/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500424667118?w=800&q=80",
       "images": [
         "/assets/products/new-prod-001/image-1.jpg",
         "/assets/products/new-prod-001/image-2.jpg",
@@ -4553,7 +4553,7 @@
       "description": "This is a high-quality product description for Premium Product 2. It features exceptional durability and modern design.",
       "price": 459,
       "originalPrice": 548,
-      "image": "/assets/products/new-prod-002/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500543105015?w=800&q=80",
       "images": [
         "/assets/products/new-prod-002/image-1.jpg",
         "/assets/products/new-prod-002/image-2.jpg",
@@ -4586,7 +4586,7 @@
       "description": "This is a high-quality product description for Premium Product 3. It features exceptional durability and modern design.",
       "price": 248,
       "originalPrice": 762,
-      "image": "/assets/products/new-prod-003/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500264037208?w=800&q=80",
       "images": [
         "/assets/products/new-prod-003/image-1.jpg",
         "/assets/products/new-prod-003/image-2.jpg",
@@ -4619,7 +4619,7 @@
       "description": "This is a high-quality product description for Premium Product 4. It features exceptional durability and modern design.",
       "price": 81,
       "originalPrice": 151,
-      "image": "/assets/products/new-prod-004/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500722342305?w=800&q=80",
       "images": [
         "/assets/products/new-prod-004/image-1.jpg",
         "/assets/products/new-prod-004/image-2.jpg",
@@ -4652,7 +4652,7 @@
       "description": "This is a high-quality product description for Premium Product 5. It features exceptional durability and modern design.",
       "price": 42,
       "originalPrice": 278,
-      "image": "/assets/products/new-prod-005/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500420955844?w=800&q=80",
       "images": [
         "/assets/products/new-prod-005/image-1.jpg",
         "/assets/products/new-prod-005/image-2.jpg",
@@ -4685,7 +4685,7 @@
       "description": "This is a high-quality product description for Premium Product 6. It features exceptional durability and modern design.",
       "price": 477,
       "originalPrice": 473,
-      "image": "/assets/products/new-prod-006/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500259694643?w=800&q=80",
       "images": [
         "/assets/products/new-prod-006/image-1.jpg",
         "/assets/products/new-prod-006/image-2.jpg",
@@ -4718,7 +4718,7 @@
       "description": "This is a high-quality product description for Premium Product 7. It features exceptional durability and modern design.",
       "price": 121,
       "originalPrice": 331,
-      "image": "/assets/products/new-prod-007/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500023882530?w=800&q=80",
       "images": [
         "/assets/products/new-prod-007/image-1.jpg",
         "/assets/products/new-prod-007/image-2.jpg",
@@ -4751,7 +4751,7 @@
       "description": "This is a high-quality product description for Premium Product 8. It features exceptional durability and modern design.",
       "price": 426,
       "originalPrice": 357,
-      "image": "/assets/products/new-prod-008/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500315259704?w=800&q=80",
       "images": [
         "/assets/products/new-prod-008/image-1.jpg",
         "/assets/products/new-prod-008/image-2.jpg",
@@ -4784,7 +4784,7 @@
       "description": "This is a high-quality product description for Premium Product 9. It features exceptional durability and modern design.",
       "price": 241,
       "originalPrice": 196,
-      "image": "/assets/products/new-prod-009/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500194521117?w=800&q=80",
       "images": [
         "/assets/products/new-prod-009/image-1.jpg",
         "/assets/products/new-prod-009/image-2.jpg",
@@ -4817,7 +4817,7 @@
       "description": "This is a high-quality product description for Premium Product 10. It features exceptional durability and modern design.",
       "price": 32,
       "originalPrice": 515,
-      "image": "/assets/products/new-prod-010/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500775172072?w=800&q=80",
       "images": [
         "/assets/products/new-prod-010/image-1.jpg",
         "/assets/products/new-prod-010/image-2.jpg",
@@ -4850,7 +4850,7 @@
       "description": "This is a high-quality product description for Premium Product 11. It features exceptional durability and modern design.",
       "price": 452,
       "originalPrice": 575,
-      "image": "/assets/products/new-prod-011/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500576794074?w=800&q=80",
       "images": [
         "/assets/products/new-prod-011/image-1.jpg",
         "/assets/products/new-prod-011/image-2.jpg",
@@ -4883,7 +4883,7 @@
       "description": "This is a high-quality product description for Premium Product 12. It features exceptional durability and modern design.",
       "price": 367,
       "originalPrice": 748,
-      "image": "/assets/products/new-prod-012/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500559980136?w=800&q=80",
       "images": [
         "/assets/products/new-prod-012/image-1.jpg",
         "/assets/products/new-prod-012/image-2.jpg",
@@ -4916,7 +4916,7 @@
       "description": "This is a high-quality product description for Premium Product 13. It features exceptional durability and modern design.",
       "price": 498,
       "originalPrice": 331,
-      "image": "/assets/products/new-prod-013/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500892180081?w=800&q=80",
       "images": [
         "/assets/products/new-prod-013/image-1.jpg",
         "/assets/products/new-prod-013/image-2.jpg",
@@ -4949,7 +4949,7 @@
       "description": "This is a high-quality product description for Premium Product 14. It features exceptional durability and modern design.",
       "price": 242,
       "originalPrice": 378,
-      "image": "/assets/products/new-prod-014/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500273100040?w=800&q=80",
       "images": [
         "/assets/products/new-prod-014/image-1.jpg",
         "/assets/products/new-prod-014/image-2.jpg",
@@ -4982,7 +4982,7 @@
       "description": "This is a high-quality product description for Premium Product 15. It features exceptional durability and modern design.",
       "price": 377,
       "originalPrice": 656,
-      "image": "/assets/products/new-prod-015/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500968294541?w=800&q=80",
       "images": [
         "/assets/products/new-prod-015/image-1.jpg",
         "/assets/products/new-prod-015/image-2.jpg",
@@ -5015,7 +5015,7 @@
       "description": "This is a high-quality product description for Premium Product 16. It features exceptional durability and modern design.",
       "price": 76,
       "originalPrice": 101,
-      "image": "/assets/products/new-prod-016/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500127032467?w=800&q=80",
       "images": [
         "/assets/products/new-prod-016/image-1.jpg",
         "/assets/products/new-prod-016/image-2.jpg",
@@ -5048,7 +5048,7 @@
       "description": "This is a high-quality product description for Premium Product 17. It features exceptional durability and modern design.",
       "price": 367,
       "originalPrice": 220,
-      "image": "/assets/products/new-prod-017/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500165260790?w=800&q=80",
       "images": [
         "/assets/products/new-prod-017/image-1.jpg",
         "/assets/products/new-prod-017/image-2.jpg",
@@ -5081,7 +5081,7 @@
       "description": "This is a high-quality product description for Premium Product 18. It features exceptional durability and modern design.",
       "price": 218,
       "originalPrice": 591,
-      "image": "/assets/products/new-prod-018/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500249963427?w=800&q=80",
       "images": [
         "/assets/products/new-prod-018/image-1.jpg",
         "/assets/products/new-prod-018/image-2.jpg",
@@ -5114,7 +5114,7 @@
       "description": "This is a high-quality product description for Premium Product 19. It features exceptional durability and modern design.",
       "price": 62,
       "originalPrice": 717,
-      "image": "/assets/products/new-prod-019/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500814188453?w=800&q=80",
       "images": [
         "/assets/products/new-prod-019/image-1.jpg",
         "/assets/products/new-prod-019/image-2.jpg",
@@ -5147,7 +5147,7 @@
       "description": "This is a high-quality product description for Premium Product 20. It features exceptional durability and modern design.",
       "price": 347,
       "originalPrice": 501,
-      "image": "/assets/products/new-prod-020/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500624553851?w=800&q=80",
       "images": [
         "/assets/products/new-prod-020/image-1.jpg",
         "/assets/products/new-prod-020/image-2.jpg",
@@ -5180,7 +5180,7 @@
       "description": "This is a high-quality product description for Premium Product 21. It features exceptional durability and modern design.",
       "price": 435,
       "originalPrice": 776,
-      "image": "/assets/products/new-prod-021/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500423084275?w=800&q=80",
       "images": [
         "/assets/products/new-prod-021/image-1.jpg",
         "/assets/products/new-prod-021/image-2.jpg",
@@ -5213,7 +5213,7 @@
       "description": "This is a high-quality product description for Premium Product 22. It features exceptional durability and modern design.",
       "price": 107,
       "originalPrice": 717,
-      "image": "/assets/products/new-prod-022/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500043831106?w=800&q=80",
       "images": [
         "/assets/products/new-prod-022/image-1.jpg",
         "/assets/products/new-prod-022/image-2.jpg",
@@ -5246,7 +5246,7 @@
       "description": "This is a high-quality product description for Premium Product 23. It features exceptional durability and modern design.",
       "price": 147,
       "originalPrice": 562,
-      "image": "/assets/products/new-prod-023/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500529805764?w=800&q=80",
       "images": [
         "/assets/products/new-prod-023/image-1.jpg",
         "/assets/products/new-prod-023/image-2.jpg",
@@ -5279,7 +5279,7 @@
       "description": "This is a high-quality product description for Premium Product 24. It features exceptional durability and modern design.",
       "price": 462,
       "originalPrice": 350,
-      "image": "/assets/products/new-prod-024/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500127501567?w=800&q=80",
       "images": [
         "/assets/products/new-prod-024/image-1.jpg",
         "/assets/products/new-prod-024/image-2.jpg",
@@ -5312,7 +5312,7 @@
       "description": "This is a high-quality product description for Premium Product 25. It features exceptional durability and modern design.",
       "price": 289,
       "originalPrice": 731,
-      "image": "/assets/products/new-prod-025/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500307327617?w=800&q=80",
       "images": [
         "/assets/products/new-prod-025/image-1.jpg",
         "/assets/products/new-prod-025/image-2.jpg",
@@ -5345,7 +5345,7 @@
       "description": "This is a high-quality product description for Premium Product 26. It features exceptional durability and modern design.",
       "price": 459,
       "originalPrice": 113,
-      "image": "/assets/products/new-prod-026/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500890592045?w=800&q=80",
       "images": [
         "/assets/products/new-prod-026/image-1.jpg",
         "/assets/products/new-prod-026/image-2.jpg",
@@ -5378,7 +5378,7 @@
       "description": "This is a high-quality product description for Premium Product 27. It features exceptional durability and modern design.",
       "price": 410,
       "originalPrice": 243,
-      "image": "/assets/products/new-prod-027/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500826526820?w=800&q=80",
       "images": [
         "/assets/products/new-prod-027/image-1.jpg",
         "/assets/products/new-prod-027/image-2.jpg",
@@ -5411,7 +5411,7 @@
       "description": "This is a high-quality product description for Premium Product 28. It features exceptional durability and modern design.",
       "price": 210,
       "originalPrice": 575,
-      "image": "/assets/products/new-prod-028/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500022484685?w=800&q=80",
       "images": [
         "/assets/products/new-prod-028/image-1.jpg",
         "/assets/products/new-prod-028/image-2.jpg",
@@ -5444,7 +5444,7 @@
       "description": "This is a high-quality product description for Premium Product 29. It features exceptional durability and modern design.",
       "price": 43,
       "originalPrice": 434,
-      "image": "/assets/products/new-prod-029/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500895812773?w=800&q=80",
       "images": [
         "/assets/products/new-prod-029/image-1.jpg",
         "/assets/products/new-prod-029/image-2.jpg",
@@ -5477,7 +5477,7 @@
       "description": "This is a high-quality product description for Premium Product 30. It features exceptional durability and modern design.",
       "price": 425,
       "originalPrice": 777,
-      "image": "/assets/products/new-prod-030/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500571994477?w=800&q=80",
       "images": [
         "/assets/products/new-prod-030/image-1.jpg",
         "/assets/products/new-prod-030/image-2.jpg",
@@ -5510,7 +5510,7 @@
       "description": "This is a high-quality product description for Premium Product 31. It features exceptional durability and modern design.",
       "price": 322,
       "originalPrice": 677,
-      "image": "/assets/products/new-prod-031/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500837216810?w=800&q=80",
       "images": [
         "/assets/products/new-prod-031/image-1.jpg",
         "/assets/products/new-prod-031/image-2.jpg",
@@ -5543,7 +5543,7 @@
       "description": "This is a high-quality product description for Premium Product 32. It features exceptional durability and modern design.",
       "price": 75,
       "originalPrice": 538,
-      "image": "/assets/products/new-prod-032/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500050842557?w=800&q=80",
       "images": [
         "/assets/products/new-prod-032/image-1.jpg",
         "/assets/products/new-prod-032/image-2.jpg",
@@ -5576,7 +5576,7 @@
       "description": "This is a high-quality product description for Premium Product 33. It features exceptional durability and modern design.",
       "price": 237,
       "originalPrice": 194,
-      "image": "/assets/products/new-prod-033/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500104980558?w=800&q=80",
       "images": [
         "/assets/products/new-prod-033/image-1.jpg",
         "/assets/products/new-prod-033/image-2.jpg",
@@ -5609,7 +5609,7 @@
       "description": "This is a high-quality product description for Premium Product 34. It features exceptional durability and modern design.",
       "price": 328,
       "originalPrice": 181,
-      "image": "/assets/products/new-prod-034/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500733600815?w=800&q=80",
       "images": [
         "/assets/products/new-prod-034/image-1.jpg",
         "/assets/products/new-prod-034/image-2.jpg",
@@ -5642,7 +5642,7 @@
       "description": "This is a high-quality product description for Premium Product 35. It features exceptional durability and modern design.",
       "price": 144,
       "originalPrice": 204,
-      "image": "/assets/products/new-prod-035/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500932320631?w=800&q=80",
       "images": [
         "/assets/products/new-prod-035/image-1.jpg",
         "/assets/products/new-prod-035/image-2.jpg",
@@ -5675,7 +5675,7 @@
       "description": "This is a high-quality product description for Premium Product 36. It features exceptional durability and modern design.",
       "price": 239,
       "originalPrice": 476,
-      "image": "/assets/products/new-prod-036/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500853694386?w=800&q=80",
       "images": [
         "/assets/products/new-prod-036/image-1.jpg",
         "/assets/products/new-prod-036/image-2.jpg",
@@ -5708,7 +5708,7 @@
       "description": "This is a high-quality product description for Premium Product 37. It features exceptional durability and modern design.",
       "price": 245,
       "originalPrice": 759,
-      "image": "/assets/products/new-prod-037/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500490485106?w=800&q=80",
       "images": [
         "/assets/products/new-prod-037/image-1.jpg",
         "/assets/products/new-prod-037/image-2.jpg",
@@ -5741,7 +5741,7 @@
       "description": "This is a high-quality product description for Premium Product 38. It features exceptional durability and modern design.",
       "price": 277,
       "originalPrice": 550,
-      "image": "/assets/products/new-prod-038/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500191144775?w=800&q=80",
       "images": [
         "/assets/products/new-prod-038/image-1.jpg",
         "/assets/products/new-prod-038/image-2.jpg",
@@ -5774,7 +5774,7 @@
       "description": "This is a high-quality product description for Premium Product 39. It features exceptional durability and modern design.",
       "price": 31,
       "originalPrice": 606,
-      "image": "/assets/products/new-prod-039/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500896114904?w=800&q=80",
       "images": [
         "/assets/products/new-prod-039/image-1.jpg",
         "/assets/products/new-prod-039/image-2.jpg",
@@ -5807,7 +5807,7 @@
       "description": "This is a high-quality product description for Premium Product 40. It features exceptional durability and modern design.",
       "price": 27,
       "originalPrice": 138,
-      "image": "/assets/products/new-prod-040/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500942789810?w=800&q=80",
       "images": [
         "/assets/products/new-prod-040/image-1.jpg",
         "/assets/products/new-prod-040/image-2.jpg",
@@ -5840,7 +5840,7 @@
       "description": "This is a high-quality product description for Premium Product 41. It features exceptional durability and modern design.",
       "price": 136,
       "originalPrice": 207,
-      "image": "/assets/products/new-prod-041/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500412952123?w=800&q=80",
       "images": [
         "/assets/products/new-prod-041/image-1.jpg",
         "/assets/products/new-prod-041/image-2.jpg",
@@ -5873,7 +5873,7 @@
       "description": "This is a high-quality product description for Premium Product 42. It features exceptional durability and modern design.",
       "price": 64,
       "originalPrice": 121,
-      "image": "/assets/products/new-prod-042/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500108586133?w=800&q=80",
       "images": [
         "/assets/products/new-prod-042/image-1.jpg",
         "/assets/products/new-prod-042/image-2.jpg",
@@ -5906,7 +5906,7 @@
       "description": "This is a high-quality product description for Premium Product 43. It features exceptional durability and modern design.",
       "price": 180,
       "originalPrice": 232,
-      "image": "/assets/products/new-prod-043/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500052371322?w=800&q=80",
       "images": [
         "/assets/products/new-prod-043/image-1.jpg",
         "/assets/products/new-prod-043/image-2.jpg",
@@ -5939,7 +5939,7 @@
       "description": "This is a high-quality product description for Premium Product 44. It features exceptional durability and modern design.",
       "price": 357,
       "originalPrice": 190,
-      "image": "/assets/products/new-prod-044/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500864257072?w=800&q=80",
       "images": [
         "/assets/products/new-prod-044/image-1.jpg",
         "/assets/products/new-prod-044/image-2.jpg",
@@ -5972,7 +5972,7 @@
       "description": "This is a high-quality product description for Premium Product 45. It features exceptional durability and modern design.",
       "price": 437,
       "originalPrice": 435,
-      "image": "/assets/products/new-prod-045/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500382270299?w=800&q=80",
       "images": [
         "/assets/products/new-prod-045/image-1.jpg",
         "/assets/products/new-prod-045/image-2.jpg",
@@ -6005,7 +6005,7 @@
       "description": "This is a high-quality product description for Premium Product 46. It features exceptional durability and modern design.",
       "price": 224,
       "originalPrice": 470,
-      "image": "/assets/products/new-prod-046/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500652407301?w=800&q=80",
       "images": [
         "/assets/products/new-prod-046/image-1.jpg",
         "/assets/products/new-prod-046/image-2.jpg",
@@ -6038,7 +6038,7 @@
       "description": "This is a high-quality product description for Premium Product 47. It features exceptional durability and modern design.",
       "price": 339,
       "originalPrice": 438,
-      "image": "/assets/products/new-prod-047/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500076539496?w=800&q=80",
       "images": [
         "/assets/products/new-prod-047/image-1.jpg",
         "/assets/products/new-prod-047/image-2.jpg",
@@ -6071,7 +6071,7 @@
       "description": "This is a high-quality product description for Premium Product 48. It features exceptional durability and modern design.",
       "price": 189,
       "originalPrice": 576,
-      "image": "/assets/products/new-prod-048/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500368336310?w=800&q=80",
       "images": [
         "/assets/products/new-prod-048/image-1.jpg",
         "/assets/products/new-prod-048/image-2.jpg",
@@ -6104,7 +6104,7 @@
       "description": "This is a high-quality product description for Premium Product 49. It features exceptional durability and modern design.",
       "price": 287,
       "originalPrice": 589,
-      "image": "/assets/products/new-prod-049/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500424857512?w=800&q=80",
       "images": [
         "/assets/products/new-prod-049/image-1.jpg",
         "/assets/products/new-prod-049/image-2.jpg",
@@ -6137,7 +6137,7 @@
       "description": "This is a high-quality product description for Premium Product 50. It features exceptional durability and modern design.",
       "price": 437,
       "originalPrice": 767,
-      "image": "/assets/products/new-prod-050/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500280420000?w=800&q=80",
       "images": [
         "/assets/products/new-prod-050/image-1.jpg",
         "/assets/products/new-prod-050/image-2.jpg",
@@ -6170,7 +6170,7 @@
       "description": "This is a high-quality product description for Premium Product 51. It features exceptional durability and modern design.",
       "price": 164,
       "originalPrice": 366,
-      "image": "/assets/products/new-prod-051/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500931651565?w=800&q=80",
       "images": [
         "/assets/products/new-prod-051/image-1.jpg",
         "/assets/products/new-prod-051/image-2.jpg",
@@ -6203,7 +6203,7 @@
       "description": "This is a high-quality product description for Premium Product 52. It features exceptional durability and modern design.",
       "price": 94,
       "originalPrice": 433,
-      "image": "/assets/products/new-prod-052/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500708261622?w=800&q=80",
       "images": [
         "/assets/products/new-prod-052/image-1.jpg",
         "/assets/products/new-prod-052/image-2.jpg",
@@ -6236,7 +6236,7 @@
       "description": "This is a high-quality product description for Premium Product 53. It features exceptional durability and modern design.",
       "price": 165,
       "originalPrice": 292,
-      "image": "/assets/products/new-prod-053/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500211965850?w=800&q=80",
       "images": [
         "/assets/products/new-prod-053/image-1.jpg",
         "/assets/products/new-prod-053/image-2.jpg",
@@ -6269,7 +6269,7 @@
       "description": "This is a high-quality product description for Premium Product 54. It features exceptional durability and modern design.",
       "price": 351,
       "originalPrice": 194,
-      "image": "/assets/products/new-prod-054/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500125838594?w=800&q=80",
       "images": [
         "/assets/products/new-prod-054/image-1.jpg",
         "/assets/products/new-prod-054/image-2.jpg",
@@ -6302,7 +6302,7 @@
       "description": "This is a high-quality product description for Premium Product 55. It features exceptional durability and modern design.",
       "price": 206,
       "originalPrice": 221,
-      "image": "/assets/products/new-prod-055/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500650192342?w=800&q=80",
       "images": [
         "/assets/products/new-prod-055/image-1.jpg",
         "/assets/products/new-prod-055/image-2.jpg",
@@ -6335,7 +6335,7 @@
       "description": "This is a high-quality product description for Premium Product 56. It features exceptional durability and modern design.",
       "price": 67,
       "originalPrice": 197,
-      "image": "/assets/products/new-prod-056/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500318408351?w=800&q=80",
       "images": [
         "/assets/products/new-prod-056/image-1.jpg",
         "/assets/products/new-prod-056/image-2.jpg",
@@ -6368,7 +6368,7 @@
       "description": "This is a high-quality product description for Premium Product 57. It features exceptional durability and modern design.",
       "price": 368,
       "originalPrice": 485,
-      "image": "/assets/products/new-prod-057/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500885024557?w=800&q=80",
       "images": [
         "/assets/products/new-prod-057/image-1.jpg",
         "/assets/products/new-prod-057/image-2.jpg",
@@ -6401,7 +6401,7 @@
       "description": "This is a high-quality product description for Premium Product 58. It features exceptional durability and modern design.",
       "price": 144,
       "originalPrice": 254,
-      "image": "/assets/products/new-prod-058/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500414592009?w=800&q=80",
       "images": [
         "/assets/products/new-prod-058/image-1.jpg",
         "/assets/products/new-prod-058/image-2.jpg",
@@ -6434,7 +6434,7 @@
       "description": "This is a high-quality product description for Premium Product 59. It features exceptional durability and modern design.",
       "price": 445,
       "originalPrice": 282,
-      "image": "/assets/products/new-prod-059/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500485065454?w=800&q=80",
       "images": [
         "/assets/products/new-prod-059/image-1.jpg",
         "/assets/products/new-prod-059/image-2.jpg",
@@ -6467,7 +6467,7 @@
       "description": "This is a high-quality product description for Premium Product 60. It features exceptional durability and modern design.",
       "price": 117,
       "originalPrice": 138,
-      "image": "/assets/products/new-prod-060/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500882433410?w=800&q=80",
       "images": [
         "/assets/products/new-prod-060/image-1.jpg",
         "/assets/products/new-prod-060/image-2.jpg",
@@ -6500,7 +6500,7 @@
       "description": "This is a high-quality product description for Premium Product 61. It features exceptional durability and modern design.",
       "price": 216,
       "originalPrice": 643,
-      "image": "/assets/products/new-prod-061/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500712689658?w=800&q=80",
       "images": [
         "/assets/products/new-prod-061/image-1.jpg",
         "/assets/products/new-prod-061/image-2.jpg",
@@ -6533,7 +6533,7 @@
       "description": "This is a high-quality product description for Premium Product 62. It features exceptional durability and modern design.",
       "price": 422,
       "originalPrice": 512,
-      "image": "/assets/products/new-prod-062/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500841155469?w=800&q=80",
       "images": [
         "/assets/products/new-prod-062/image-1.jpg",
         "/assets/products/new-prod-062/image-2.jpg",
@@ -6566,7 +6566,7 @@
       "description": "This is a high-quality product description for Premium Product 63. It features exceptional durability and modern design.",
       "price": 63,
       "originalPrice": 141,
-      "image": "/assets/products/new-prod-063/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500084415251?w=800&q=80",
       "images": [
         "/assets/products/new-prod-063/image-1.jpg",
         "/assets/products/new-prod-063/image-2.jpg",
@@ -6599,7 +6599,7 @@
       "description": "This is a high-quality product description for Premium Product 64. It features exceptional durability and modern design.",
       "price": 38,
       "originalPrice": 449,
-      "image": "/assets/products/new-prod-064/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500264405191?w=800&q=80",
       "images": [
         "/assets/products/new-prod-064/image-1.jpg",
         "/assets/products/new-prod-064/image-2.jpg",
@@ -6632,7 +6632,7 @@
       "description": "This is a high-quality product description for Premium Product 65. It features exceptional durability and modern design.",
       "price": 251,
       "originalPrice": 726,
-      "image": "/assets/products/new-prod-065/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500862807831?w=800&q=80",
       "images": [
         "/assets/products/new-prod-065/image-1.jpg",
         "/assets/products/new-prod-065/image-2.jpg",
@@ -6665,7 +6665,7 @@
       "description": "This is a high-quality product description for Premium Product 66. It features exceptional durability and modern design.",
       "price": 461,
       "originalPrice": 551,
-      "image": "/assets/products/new-prod-066/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500490468947?w=800&q=80",
       "images": [
         "/assets/products/new-prod-066/image-1.jpg",
         "/assets/products/new-prod-066/image-2.jpg",
@@ -6698,7 +6698,7 @@
       "description": "This is a high-quality product description for Premium Product 67. It features exceptional durability and modern design.",
       "price": 490,
       "originalPrice": 153,
-      "image": "/assets/products/new-prod-067/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500802390625?w=800&q=80",
       "images": [
         "/assets/products/new-prod-067/image-1.jpg",
         "/assets/products/new-prod-067/image-2.jpg",
@@ -6731,7 +6731,7 @@
       "description": "This is a high-quality product description for Premium Product 68. It features exceptional durability and modern design.",
       "price": 276,
       "originalPrice": 392,
-      "image": "/assets/products/new-prod-068/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500517027402?w=800&q=80",
       "images": [
         "/assets/products/new-prod-068/image-1.jpg",
         "/assets/products/new-prod-068/image-2.jpg",
@@ -6764,7 +6764,7 @@
       "description": "This is a high-quality product description for Premium Product 69. It features exceptional durability and modern design.",
       "price": 73,
       "originalPrice": 297,
-      "image": "/assets/products/new-prod-069/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500003991279?w=800&q=80",
       "images": [
         "/assets/products/new-prod-069/image-1.jpg",
         "/assets/products/new-prod-069/image-2.jpg",
@@ -6797,7 +6797,7 @@
       "description": "This is a high-quality product description for Premium Product 70. It features exceptional durability and modern design.",
       "price": 461,
       "originalPrice": 145,
-      "image": "/assets/products/new-prod-070/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500757159145?w=800&q=80",
       "images": [
         "/assets/products/new-prod-070/image-1.jpg",
         "/assets/products/new-prod-070/image-2.jpg",
@@ -6830,7 +6830,7 @@
       "description": "This is a high-quality product description for Premium Product 71. It features exceptional durability and modern design.",
       "price": 460,
       "originalPrice": 226,
-      "image": "/assets/products/new-prod-071/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500029603574?w=800&q=80",
       "images": [
         "/assets/products/new-prod-071/image-1.jpg",
         "/assets/products/new-prod-071/image-2.jpg",
@@ -6863,7 +6863,7 @@
       "description": "This is a high-quality product description for Premium Product 72. It features exceptional durability and modern design.",
       "price": 459,
       "originalPrice": 126,
-      "image": "/assets/products/new-prod-072/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500123253685?w=800&q=80",
       "images": [
         "/assets/products/new-prod-072/image-1.jpg",
         "/assets/products/new-prod-072/image-2.jpg",
@@ -6896,7 +6896,7 @@
       "description": "This is a high-quality product description for Premium Product 73. It features exceptional durability and modern design.",
       "price": 427,
       "originalPrice": 415,
-      "image": "/assets/products/new-prod-073/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500197364350?w=800&q=80",
       "images": [
         "/assets/products/new-prod-073/image-1.jpg",
         "/assets/products/new-prod-073/image-2.jpg",
@@ -6929,7 +6929,7 @@
       "description": "This is a high-quality product description for Premium Product 74. It features exceptional durability and modern design.",
       "price": 115,
       "originalPrice": 385,
-      "image": "/assets/products/new-prod-074/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500102730657?w=800&q=80",
       "images": [
         "/assets/products/new-prod-074/image-1.jpg",
         "/assets/products/new-prod-074/image-2.jpg",
@@ -6962,7 +6962,7 @@
       "description": "This is a high-quality product description for Premium Product 75. It features exceptional durability and modern design.",
       "price": 398,
       "originalPrice": 553,
-      "image": "/assets/products/new-prod-075/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500348955684?w=800&q=80",
       "images": [
         "/assets/products/new-prod-075/image-1.jpg",
         "/assets/products/new-prod-075/image-2.jpg",
@@ -6995,7 +6995,7 @@
       "description": "This is a high-quality product description for Premium Product 76. It features exceptional durability and modern design.",
       "price": 37,
       "originalPrice": 799,
-      "image": "/assets/products/new-prod-076/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500497104672?w=800&q=80",
       "images": [
         "/assets/products/new-prod-076/image-1.jpg",
         "/assets/products/new-prod-076/image-2.jpg",
@@ -7028,7 +7028,7 @@
       "description": "This is a high-quality product description for Premium Product 77. It features exceptional durability and modern design.",
       "price": 472,
       "originalPrice": 483,
-      "image": "/assets/products/new-prod-077/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500940328459?w=800&q=80",
       "images": [
         "/assets/products/new-prod-077/image-1.jpg",
         "/assets/products/new-prod-077/image-2.jpg",
@@ -7061,7 +7061,7 @@
       "description": "This is a high-quality product description for Premium Product 78. It features exceptional durability and modern design.",
       "price": 435,
       "originalPrice": 603,
-      "image": "/assets/products/new-prod-078/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500455529568?w=800&q=80",
       "images": [
         "/assets/products/new-prod-078/image-1.jpg",
         "/assets/products/new-prod-078/image-2.jpg",
@@ -7094,7 +7094,7 @@
       "description": "This is a high-quality product description for Premium Product 79. It features exceptional durability and modern design.",
       "price": 171,
       "originalPrice": 746,
-      "image": "/assets/products/new-prod-079/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500559753661?w=800&q=80",
       "images": [
         "/assets/products/new-prod-079/image-1.jpg",
         "/assets/products/new-prod-079/image-2.jpg",
@@ -7127,7 +7127,7 @@
       "description": "This is a high-quality product description for Premium Product 80. It features exceptional durability and modern design.",
       "price": 469,
       "originalPrice": 196,
-      "image": "/assets/products/new-prod-080/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500094988332?w=800&q=80",
       "images": [
         "/assets/products/new-prod-080/image-1.jpg",
         "/assets/products/new-prod-080/image-2.jpg",
@@ -7160,7 +7160,7 @@
       "description": "This is a high-quality product description for Premium Product 81. It features exceptional durability and modern design.",
       "price": 409,
       "originalPrice": 110,
-      "image": "/assets/products/new-prod-081/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500245202978?w=800&q=80",
       "images": [
         "/assets/products/new-prod-081/image-1.jpg",
         "/assets/products/new-prod-081/image-2.jpg",
@@ -7193,7 +7193,7 @@
       "description": "This is a high-quality product description for Premium Product 82. It features exceptional durability and modern design.",
       "price": 140,
       "originalPrice": 259,
-      "image": "/assets/products/new-prod-082/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500386345895?w=800&q=80",
       "images": [
         "/assets/products/new-prod-082/image-1.jpg",
         "/assets/products/new-prod-082/image-2.jpg",
@@ -7226,7 +7226,7 @@
       "description": "This is a high-quality product description for Premium Product 83. It features exceptional durability and modern design.",
       "price": 404,
       "originalPrice": 386,
-      "image": "/assets/products/new-prod-083/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500795782755?w=800&q=80",
       "images": [
         "/assets/products/new-prod-083/image-1.jpg",
         "/assets/products/new-prod-083/image-2.jpg",
@@ -7259,7 +7259,7 @@
       "description": "This is a high-quality product description for Premium Product 84. It features exceptional durability and modern design.",
       "price": 485,
       "originalPrice": 460,
-      "image": "/assets/products/new-prod-084/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500037256077?w=800&q=80",
       "images": [
         "/assets/products/new-prod-084/image-1.jpg",
         "/assets/products/new-prod-084/image-2.jpg",
@@ -7292,7 +7292,7 @@
       "description": "This is a high-quality product description for Premium Product 85. It features exceptional durability and modern design.",
       "price": 475,
       "originalPrice": 430,
-      "image": "/assets/products/new-prod-085/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500411388477?w=800&q=80",
       "images": [
         "/assets/products/new-prod-085/image-1.jpg",
         "/assets/products/new-prod-085/image-2.jpg",
@@ -7325,7 +7325,7 @@
       "description": "This is a high-quality product description for Premium Product 86. It features exceptional durability and modern design.",
       "price": 444,
       "originalPrice": 122,
-      "image": "/assets/products/new-prod-086/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500344486739?w=800&q=80",
       "images": [
         "/assets/products/new-prod-086/image-1.jpg",
         "/assets/products/new-prod-086/image-2.jpg",
@@ -7358,7 +7358,7 @@
       "description": "This is a high-quality product description for Premium Product 87. It features exceptional durability and modern design.",
       "price": 203,
       "originalPrice": 320,
-      "image": "/assets/products/new-prod-087/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500269650155?w=800&q=80",
       "images": [
         "/assets/products/new-prod-087/image-1.jpg",
         "/assets/products/new-prod-087/image-2.jpg",
@@ -7391,7 +7391,7 @@
       "description": "This is a high-quality product description for Premium Product 88. It features exceptional durability and modern design.",
       "price": 424,
       "originalPrice": 200,
-      "image": "/assets/products/new-prod-088/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500460759092?w=800&q=80",
       "images": [
         "/assets/products/new-prod-088/image-1.jpg",
         "/assets/products/new-prod-088/image-2.jpg",
@@ -7424,7 +7424,7 @@
       "description": "This is a high-quality product description for Premium Product 89. It features exceptional durability and modern design.",
       "price": 286,
       "originalPrice": 699,
-      "image": "/assets/products/new-prod-089/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500599916179?w=800&q=80",
       "images": [
         "/assets/products/new-prod-089/image-1.jpg",
         "/assets/products/new-prod-089/image-2.jpg",
@@ -7457,7 +7457,7 @@
       "description": "This is a high-quality product description for Premium Product 90. It features exceptional durability and modern design.",
       "price": 326,
       "originalPrice": 110,
-      "image": "/assets/products/new-prod-090/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500823467283?w=800&q=80",
       "images": [
         "/assets/products/new-prod-090/image-1.jpg",
         "/assets/products/new-prod-090/image-2.jpg",
@@ -7490,7 +7490,7 @@
       "description": "This is a high-quality product description for Premium Product 91. It features exceptional durability and modern design.",
       "price": 493,
       "originalPrice": 736,
-      "image": "/assets/products/new-prod-091/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500686739908?w=800&q=80",
       "images": [
         "/assets/products/new-prod-091/image-1.jpg",
         "/assets/products/new-prod-091/image-2.jpg",
@@ -7523,7 +7523,7 @@
       "description": "This is a high-quality product description for Premium Product 92. It features exceptional durability and modern design.",
       "price": 89,
       "originalPrice": 607,
-      "image": "/assets/products/new-prod-092/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500718793960?w=800&q=80",
       "images": [
         "/assets/products/new-prod-092/image-1.jpg",
         "/assets/products/new-prod-092/image-2.jpg",
@@ -7556,7 +7556,7 @@
       "description": "This is a high-quality product description for Premium Product 93. It features exceptional durability and modern design.",
       "price": 507,
       "originalPrice": 335,
-      "image": "/assets/products/new-prod-093/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500337690026?w=800&q=80",
       "images": [
         "/assets/products/new-prod-093/image-1.jpg",
         "/assets/products/new-prod-093/image-2.jpg",
@@ -7589,7 +7589,7 @@
       "description": "This is a high-quality product description for Premium Product 94. It features exceptional durability and modern design.",
       "price": 135,
       "originalPrice": 197,
-      "image": "/assets/products/new-prod-094/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500010100474?w=800&q=80",
       "images": [
         "/assets/products/new-prod-094/image-1.jpg",
         "/assets/products/new-prod-094/image-2.jpg",
@@ -7622,7 +7622,7 @@
       "description": "This is a high-quality product description for Premium Product 95. It features exceptional durability and modern design.",
       "price": 188,
       "originalPrice": 482,
-      "image": "/assets/products/new-prod-095/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500583898038?w=800&q=80",
       "images": [
         "/assets/products/new-prod-095/image-1.jpg",
         "/assets/products/new-prod-095/image-2.jpg",
@@ -7655,7 +7655,7 @@
       "description": "This is a high-quality product description for Premium Product 96. It features exceptional durability and modern design.",
       "price": 41,
       "originalPrice": 365,
-      "image": "/assets/products/new-prod-096/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500543223275?w=800&q=80",
       "images": [
         "/assets/products/new-prod-096/image-1.jpg",
         "/assets/products/new-prod-096/image-2.jpg",
@@ -7688,7 +7688,7 @@
       "description": "This is a high-quality product description for Premium Product 97. It features exceptional durability and modern design.",
       "price": 438,
       "originalPrice": 377,
-      "image": "/assets/products/new-prod-097/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500537687133?w=800&q=80",
       "images": [
         "/assets/products/new-prod-097/image-1.jpg",
         "/assets/products/new-prod-097/image-2.jpg",
@@ -7721,7 +7721,7 @@
       "description": "This is a high-quality product description for Premium Product 98. It features exceptional durability and modern design.",
       "price": 146,
       "originalPrice": 397,
-      "image": "/assets/products/new-prod-098/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500158813138?w=800&q=80",
       "images": [
         "/assets/products/new-prod-098/image-1.jpg",
         "/assets/products/new-prod-098/image-2.jpg",
@@ -7754,7 +7754,7 @@
       "description": "This is a high-quality product description for Premium Product 99. It features exceptional durability and modern design.",
       "price": 167,
       "originalPrice": 232,
-      "image": "/assets/products/new-prod-099/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500207105109?w=800&q=80",
       "images": [
         "/assets/products/new-prod-099/image-1.jpg",
         "/assets/products/new-prod-099/image-2.jpg",
@@ -7787,7 +7787,7 @@
       "description": "This is a high-quality product description for Premium Product 100. It features exceptional durability and modern design.",
       "price": 478,
       "originalPrice": 401,
-      "image": "/assets/products/new-prod-100/image-1.jpg",
+      "image": "https://images.unsplash.com/photo-1500817657089?w=800&q=80",
       "images": [
         "/assets/products/new-prod-100/image-1.jpg",
         "/assets/products/new-prod-100/image-2.jpg",
