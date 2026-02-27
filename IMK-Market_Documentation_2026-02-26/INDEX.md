@@ -4,6 +4,7 @@ Location: IMK-Market_Documentation_2026-02-26
 
 ## Primary Docs
 - FULL_DOCUMENTATION.md
+- FULL_DOCUMENTATION.odt
 - SPEC_COMPLIANCE_REPORT.md
 - README.md
 - SECURITY.md
