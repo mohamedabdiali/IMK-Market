@@ -91,6 +91,16 @@ const parseFlexibleValue = (value: string) => {
 };
 
 const truncate = (value: string, limit = 80) => (value.length > limit ? `${value.slice(0, limit - 3)}...` : value);
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object" && "response" in error) {
+    const response = (error as { response?: { data?: { error?: string; message?: string } } }).response;
+    const message = response?.data?.error || response?.data?.message;
+    if (message) return message;
+  }
+  return fallback;
+};
 
 interface DashboardStats {
   totalTenants: number;
@@ -839,11 +849,11 @@ function UsersTab({ token, isActive }: { token: string | null; isActive: boolean
       api.post(
         "/super-admin/users",
         {
-          email: payload.email,
+          email: payload.email.trim(),
           password: payload.password,
-          username: payload.username || undefined,
-          name: payload.name || undefined,
-          phone: payload.phone || undefined,
+          username: payload.username.trim() || undefined,
+          name: payload.name.trim() || undefined,
+          phone: payload.phone.trim() || undefined,
           tenantId: payload.tenantId || undefined,
           roleIds: payload.roleIds,
         },
@@ -855,7 +865,7 @@ function UsersTab({ token, isActive }: { token: string | null; isActive: boolean
       setUserDialogOpen(false);
       setUserForm({ email: "", password: "", username: "", name: "", phone: "", tenantId: "", roleIds: [] });
     },
-    onError: () => toast.error("Failed to create user"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to create user")),
   });
 
   const deleteUserMutation = useMutation({
@@ -864,7 +874,7 @@ function UsersTab({ token, isActive }: { token: string | null; isActive: boolean
       toast.success("User deleted");
       queryClient.invalidateQueries({ queryKey: ["super-admin", "users"] });
     },
-    onError: () => toast.error("Failed to delete user"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to delete user")),
   });
 
   const updateRolesMutation = useMutation({
@@ -875,7 +885,7 @@ function UsersTab({ token, isActive }: { token: string | null; isActive: boolean
       queryClient.invalidateQueries({ queryKey: ["super-admin", "users"] });
       setEditingRolesUser(null);
     },
-    onError: () => toast.error("Failed to update roles"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to update roles")),
   });
 
   const toggleRole = (roleId: string) => {
@@ -895,15 +905,32 @@ function UsersTab({ token, isActive }: { token: string | null; isActive: boolean
 
   const submitUser = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!userForm.email.trim() || !userForm.password.trim()) {
+    const email = userForm.email.trim().toLowerCase();
+    const password = userForm.password.trim();
+    if (!email || !password) {
       toast.error("Email and password are required");
+      return;
+    }
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
       return;
     }
     if (userForm.roleIds.length === 0) {
       toast.error("Select at least one role");
       return;
     }
-    createUserMutation.mutate(userForm);
+    if (users?.some((record) => record.email.toLowerCase() === email)) {
+      toast.error("Email already exists");
+      return;
+    }
+    createUserMutation.mutate({
+      ...userForm,
+      email,
+      password,
+      username: userForm.username.trim(),
+      name: userForm.name.trim(),
+      phone: userForm.phone.trim(),
+    });
   };
 
   const openRolesEditor = (userRecord: UserRecord) => {
@@ -1165,8 +1192,8 @@ function RolesTab({ token, isActive }: { token: string | null; isActive: boolean
       api.post(
         "/super-admin/roles",
         {
-          name: payload.name,
-          description: payload.description || undefined,
+          name: payload.name.trim(),
+          description: payload.description.trim() || undefined,
           tenantId: payload.tenantId || undefined,
           permissionIds: payload.permissionIds,
         },
@@ -1178,7 +1205,7 @@ function RolesTab({ token, isActive }: { token: string | null; isActive: boolean
       setRoleDialogOpen(false);
       setRoleForm({ name: "", description: "", tenantId: "", permissionIds: [] });
     },
-    onError: () => toast.error("Failed to create role"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to create role")),
   });
 
   const updateRoleMutation = useMutation({
@@ -1189,7 +1216,7 @@ function RolesTab({ token, isActive }: { token: string | null; isActive: boolean
       queryClient.invalidateQueries({ queryKey: ["super-admin", "roles"] });
       setRoleDialogOpen(false);
     },
-    onError: () => toast.error("Failed to update role"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to update role")),
   });
 
   const deleteRoleMutation = useMutation({
@@ -1198,7 +1225,7 @@ function RolesTab({ token, isActive }: { token: string | null; isActive: boolean
       toast.success("Role deleted");
       queryClient.invalidateQueries({ queryKey: ["super-admin", "roles"] });
     },
-    onError: () => toast.error("Failed to delete role"),
+    onError: (error) => toast.error(getErrorMessage(error, "Failed to delete role")),
   });
 
   const togglePermission = (permissionId: string) => {
@@ -1229,20 +1256,34 @@ function RolesTab({ token, isActive }: { token: string | null; isActive: boolean
 
   const submitRole = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!roleForm.name.trim()) {
+    const name = roleForm.name.trim();
+    if (!name) {
       toast.error("Role name is required");
+      return;
+    }
+    if (name.length < 2) {
+      toast.error("Role name must be at least 2 characters");
+      return;
+    }
+    const scopeKey = roleForm.tenantId || "";
+    if (!editingRole && roles?.some((role) => role.name.toLowerCase() === name.toLowerCase() && (role.tenantId || "") === scopeKey)) {
+      toast.error("Role already exists for this scope");
       return;
     }
     if (editingRole) {
       updateRoleMutation.mutate({
         id: editingRole.id,
-        name: roleForm.name.trim(),
-        description: roleForm.description || undefined,
+        name,
+        description: roleForm.description.trim() || undefined,
         permissionIds: roleForm.permissionIds,
       });
       return;
     }
-    createRoleMutation.mutate(roleForm);
+    createRoleMutation.mutate({
+      ...roleForm,
+      name,
+      description: roleForm.description.trim(),
+    });
   };
 
   if (!token) {

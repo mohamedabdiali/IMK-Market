@@ -2,6 +2,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import prisma from "../prisma.js";
 import {
     authenticate,
@@ -365,7 +366,7 @@ router.post("/users", async (req: AuthRequest, res) => {
             name: z.string().optional(),
             phone: z.string().optional(),
             tenantId: z.string().optional(),
-            roleIds: z.array(z.string()),
+            roleIds: z.array(z.string()).default([]),
         });
 
         const parsed = schema.safeParse(req.body);
@@ -376,38 +377,67 @@ router.post("/users", async (req: AuthRequest, res) => {
             });
         }
 
+        const normalizedEmail = parsed.data.email.trim().toLowerCase();
+        const normalizedUsername = parsed.data.username?.trim() || undefined;
+        const normalizedName = parsed.data.name?.trim() || undefined;
+        const normalizedPhone = parsed.data.phone?.trim() || undefined;
+        const tenantId = parsed.data.tenantId || null;
+
+        if (tenantId) {
+            const tenantExists = await prisma.tenant.findUnique({ where: { id: tenantId } });
+            if (!tenantExists) {
+                return res.status(404).json({ error: "Tenant not found" });
+            }
+        }
+
+        const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+        if (existingUser) {
+            return res.status(409).json({ error: "Email already in use" });
+        }
+
+        const roleIds = Array.from(new Set(parsed.data.roleIds));
+        const roles = roleIds.length
+            ? await prisma.role.findMany({ where: { id: { in: roleIds } } })
+            : [];
+        if (roleIds.length && roles.length !== roleIds.length) {
+            return res.status(400).json({ error: "One or more roles not found" });
+        }
+
         const passwordHash = bcrypt.hashSync(parsed.data.password, 10);
 
-        const user = await prisma.user.create({
-            data: {
-                email: parsed.data.email,
-                username: parsed.data.username,
-                passwordHash,
-                name: parsed.data.name,
-                phone: parsed.data.phone,
-                tenantId: parsed.data.tenantId,
-                mustResetPassword: true,
-                passwordUpdatedAt: new Date(),
-            },
-        });
-
-        // Assign roles
-        for (const roleId of parsed.data.roleIds) {
-            await prisma.userRole.create({
+        const user = await prisma.$transaction(async (tx) => {
+            const created = await tx.user.create({
                 data: {
-                    userId: user.id,
-                    roleId,
-                    tenantId: parsed.data.tenantId,
+                    email: normalizedEmail,
+                    username: normalizedUsername,
+                    passwordHash,
+                    name: normalizedName,
+                    phone: normalizedPhone,
+                    tenantId: tenantId || undefined,
+                    mustResetPassword: true,
+                    passwordUpdatedAt: new Date(),
                 },
             });
-        }
+
+            if (roles.length) {
+                await tx.userRole.createMany({
+                    data: roles.map((role) => ({
+                        userId: created.id,
+                        roleId: role.id,
+                        tenantId: role.tenantId ?? tenantId ?? undefined,
+                    })),
+                });
+            }
+
+            return created;
+        });
 
         await createAuditLog({
             userId: req.user!.userId,
             action: "create",
             resource: "user",
             resourceId: user.id,
-            changes: { email: parsed.data.email, roles: parsed.data.roleIds },
+            changes: { email: normalizedEmail, roles: roleIds, tenantId },
             ipAddress: req.ip,
             userAgent: req.headers["user-agent"],
         });
@@ -415,6 +445,11 @@ router.post("/users", async (req: AuthRequest, res) => {
         res.status(201).json(user);
     } catch (error) {
         console.error("Create user error:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === "P2002") {
+                return res.status(409).json({ error: "User already exists" });
+            }
+        }
         res.status(500).json({ error: "Failed to create user" });
     }
 });
@@ -560,31 +595,59 @@ router.post("/roles", async (req: AuthRequest, res) => {
             });
         }
 
-        const role = await prisma.role.create({
-            data: {
-                name: parsed.data.name,
-                description: parsed.data.description,
-                tenantId: parsed.data.tenantId,
-                isSystemRole: false,
-            },
-        });
+        const normalizedName = parsed.data.name.trim();
+        const tenantId = parsed.data.tenantId || null;
 
-        // Assign permissions
-        for (const permissionId of parsed.data.permissionIds) {
-            await prisma.rolePermission.create({
+        if (tenantId) {
+            const tenantExists = await prisma.tenant.findUnique({ where: { id: tenantId } });
+            if (!tenantExists) {
+                return res.status(404).json({ error: "Tenant not found" });
+            }
+        }
+
+        const existingRole = await prisma.role.findFirst({
+            where: { name: normalizedName, tenantId },
+        });
+        if (existingRole) {
+            return res.status(409).json({ error: "Role name already exists for this scope" });
+        }
+
+        const permissionIds = Array.from(new Set(parsed.data.permissionIds));
+        const permissions = permissionIds.length
+            ? await prisma.permission.findMany({ where: { id: { in: permissionIds } } })
+            : [];
+        if (permissionIds.length && permissions.length !== permissionIds.length) {
+            return res.status(400).json({ error: "One or more permissions not found" });
+        }
+
+        const role = await prisma.$transaction(async (tx) => {
+            const created = await tx.role.create({
                 data: {
-                    roleId: role.id,
-                    permissionId,
+                    name: normalizedName,
+                    description: parsed.data.description,
+                    tenantId: tenantId || undefined,
+                    isSystemRole: false,
                 },
             });
-        }
+
+            if (permissions.length) {
+                await tx.rolePermission.createMany({
+                    data: permissions.map((permission) => ({
+                        roleId: created.id,
+                        permissionId: permission.id,
+                    })),
+                });
+            }
+
+            return created;
+        });
 
         await createAuditLog({
             userId: req.user!.userId,
             action: "create",
             resource: "role",
             resourceId: role.id,
-            changes: parsed.data,
+            changes: { ...parsed.data, name: normalizedName, permissionIds },
             ipAddress: req.ip,
             userAgent: req.headers["user-agent"],
         });
@@ -592,6 +655,11 @@ router.post("/roles", async (req: AuthRequest, res) => {
         res.status(201).json(role);
     } catch (error) {
         console.error("Create role error:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === "P2002") {
+                return res.status(409).json({ error: "Role already exists" });
+            }
+        }
         res.status(500).json({ error: "Failed to create role" });
     }
 });
