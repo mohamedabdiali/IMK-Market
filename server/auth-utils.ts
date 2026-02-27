@@ -126,7 +126,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
             "/api/auth/logout",
             "/api/auth/me",
         ];
-        if (user.mustResetPassword && !allowlist.some((path) => req.originalUrl.startsWith(path))) {
+        if (user.mustResetPassword && !user.isSuperAdmin && !allowlist.some((path) => req.originalUrl.startsWith(path))) {
             return res.status(403).json({ error: "Password reset required" });
         }
         next();

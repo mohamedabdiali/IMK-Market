@@ -1,0 +1,101 @@
+ID,Section,Test,Expected,Actual,Status,Evidence
+GF-01,General,Homepage loads,Homepage renders,Blocked live access,Blocked,
+GF-02,General,Navigation paths work,All routes reachable,Blocked live access,Blocked,
+GF-03,General,Links not broken,No broken links,Blocked live access,Blocked,
+GF-04,General,Search and category filters,Filters return correct products,Pass,Pass,`src/pages/Products.tsx`
+GF-05,General,Login and logout for all roles,Login and logout succeed,Pass,Pass,`src/pages/EnhancedLogin.tsx`
+GF-06,General,Invalid credentials,Rejected with error,Pass,Pass,`server/routes/auth.ts`
+RBAC-01,RBAC,Super Admin access,Only super admin screens visible,Pass,Pass,`server/routes/super-admin.ts`
+RBAC-02,RBAC,Manager access,Only allowed screens visible,Blocked role accounts,Blocked,
+RBAC-03,RBAC,Sales Associate access,Only allowed screens visible,Blocked role accounts,Blocked,
+RBAC-04,RBAC,Seller approved access,Seller dashboard only,Pass,Pass,`server/routes/sellers.ts`
+RBAC-05,RBAC,Seller pending access,Blocked from seller dashboard,Pass,Pass,`server/routes/auth.ts`
+RBAC-06,RBAC,Customer access,Customer pages only,Pass,Pass,`src/App.tsx`
+RBAC-07,RBAC,Backend permission checks,Unauthorized routes blocked,Pass,Pass,`server/auth-utils.ts`
+RBAC-08,RBAC,Tenant isolation,Users see own tenant data,Pass,Pass,`server/auth-utils.ts`
+RBAC-09,RBAC,UI permission gating,Only authorized menus visible,Fail,Fail,`src/components/admin/AdminSidebar.tsx`
+RBAC-10,RBAC,Admin login role check,Only admin roles allowed,Fail,Fail,`server/routes/auth.ts`
+AUTH-01,Auth,Email and password login,Valid login succeeds,Pass,Pass,`server/routes/auth.ts`
+AUTH-02,Auth,Google OAuth seller login,Valid token login succeeds,Pass,Pass,`server/routes/auth.ts`
+AUTH-03,Auth,Password strength,Strong password enforced,Fail,Fail,`server/routes/auth.ts`
+AUTH-04,Auth,Forgot password flow,Reset email or token flow,Fail,Fail,
+AUTH-05,Auth,Session expiration and refresh,Expired tokens refresh,Pass,Pass,`server/routes/auth.ts`
+AUTH-06,Auth,MFA availability,MFA available,Fail,Fail,
+AUTH-07,Auth,Token storage,No access tokens in localStorage,Fail,Fail,`src/context/AuthContext.tsx`
+AUTH-08,Auth,CSRF for refresh and logout,CSRF enforced,Pass,Pass,`server/routes/auth.ts`
+SELL-01,Seller,Registration fields present,All required fields,Pass,Pass,`src/pages/SellerRegistration.tsx`
+SELL-02,Seller,Required field validation,Invalid fields rejected,Pass,Pass,`server/routes/auth.ts`
+SELL-03,Seller,Email confirmation flow,Email confirmation required,Fail,Fail,
+SELL-04,Seller,Admin approval,Approval changes status,Pass,Pass,`server/routes/super-admin.ts`
+SELL-05,Seller,Rejection flow,Rejection persists reason,Pass,Pass,`server/routes/super-admin.ts`
+SELL-06,Seller,Approved seller dashboard,Access after approval,Pass,Pass,`server/routes/sellers.ts`
+SELL-07,Seller,Seller edit own products only,Ownership enforced,Pass,Pass,`server/routes/sellers.ts`
+PROD-01,Product,Add product seller,Product created,Pass,Pass,`server/routes/sellers.ts`
+PROD-02,Product,Edit product seller,Product updated,Pass,Pass,`server/routes/sellers.ts`
+PROD-03,Product,Delete product seller,Product deleted,Pass,Pass,`server/routes/sellers.ts`
+PROD-04,Product,Admin sees all products,All products visible,Pass,Pass,`server/index.ts`
+PROD-05,Product,Search and filter,Results correct,Pass,Pass,`src/pages/Products.tsx`
+PROD-06,Product,Visibility toggles,Inactive hidden,Pass,Pass,`server/index.ts`
+PROD-07,Product,Images load,Images render,Blocked live access,Blocked,
+PROD-08,Product,SKU price stock accuracy,Server enforces prices,Fail,Fail,`server/index.ts`
+ORD-01,Orders,Place order customer,Order created,Pass,Pass,`server/index.ts`
+ORD-02,Orders,Order list status view,Orders visible,Pass,Pass,`server/index.ts`
+ORD-03,Orders,Seller receives order,Seller order list shows items,Pass,Pass,`server/routes/sellers.ts`
+ORD-04,Orders,Manager sees all orders,Manager sees tenant orders,Pass,Pass,`server/index.ts`
+ORD-05,Orders,Order cancellation customer,Customer can cancel,Fail,Fail,
+ORD-06,Orders,Return and refund triggers,Return workflow exists,Fail,Fail,
+ORD-07,Orders,Emails for order events,Emails stored or sent,Pass,Pass,`server/index.ts`
+NOT-01,Notifications,Seller notifications,Notifications stored,Pass,Pass,`server/routes/notifications.ts`
+NOT-02,Notifications,Admin notifications,Notifications stored,Pass,Pass,`server/routes/notifications.ts`
+NOT-03,Notifications,Customer notifications,Notifications stored,Pass,Pass,`server/routes/notifications.ts`
+NOT-04,Notifications,Realtime updates,Realtime channel exists,Fail,Fail,
+AN-01,Analytics,Sales overview,Admin analytics works,Pass,Pass,`server/index.ts`
+AN-02,Analytics,Product analytics,Product metrics available,Fail,Fail,
+AN-03,Analytics,Order trends,Trend reports available,Fail,Fail,
+AN-04,Analytics,Export capabilities,Export available,Fail,Fail,
+UX-01,UI/UX,Consistent design,Consistent layout,Blocked live access,Blocked,
+UX-02,UI/UX,Responsive behavior,Mobile and desktop ok,Blocked live access,Blocked,
+UX-03,UI/UX,Action feedback,Loading and error states,Blocked live access,Blocked,
+UX-04,UI/UX,Accessibility,Baseline a11y checks,Blocked live access,Blocked,
+UX-05,UI/UX,Font readability,Readable sizes,Blocked live access,Blocked,
+SEC-01,Security,HTTPS only,HTTPS enforced,Blocked live access,Blocked,
+SEC-02,Security,Sensitive data in URL,No sensitive data in URL,Pass,Pass,`server/index.ts`
+SEC-03,Security,CSRF protection,CSRF enforced for cookies,Pass,Pass,`server/routes/auth.ts`
+SEC-04,Security,SQL injection protection,ORM parameterization,Pass,Pass,`prisma/schema.prisma`
+SEC-05,Security,Privilege escalation,No escalation possible,Fail,Fail,`src/context/AuthContext.tsx`
+SEC-06,Security,API endpoint protection,Protected routes enforce auth,Pass,Pass,`server/auth-utils.ts`
+SEC-07,Security,Rate limiting,Auth routes limited,Fail,Fail,`server/index.ts`
+SEC-08,Security,Password hashing,bcrypt used,Pass,Pass,`server/routes/auth.ts`
+PERF-01,Performance,FCP,Measured in Lighthouse,Blocked live access,Blocked,
+PERF-02,Performance,Slow network simulation,Slow network ok,Blocked live access,Blocked,
+PERF-03,Performance,Caching,Cache headers present,Blocked live access,Blocked,
+PERF-04,Performance,API response time,Latency within target,Blocked live access,Blocked,
+PERF-05,Performance,DB query profiling,Queries within target,Blocked live access,Blocked,
+MOB-01,Mobile/API,Mobile uses API endpoints,Same API used,Fail,Fail,`flutter_app/lib/*`
+MOB-02,Mobile/API,Auth consistency,Same auth stack,Fail,Fail,`flutter_app/lib/*`
+MOB-03,Mobile/API,Push notifications,Push enabled,Fail,Fail,
+MOB-04,Mobile/API,Offline behavior,Offline supported,Blocked mobile access,Blocked,
+PAY-01,Payment,Cart creation,Cart persists,Pass,Pass,`src/context/CartContext.tsx`
+PAY-02,Payment,Checkout calculation,Server validates totals,Fail,Fail,`server/index.ts`
+PAY-03,Payment,Tax and discount,Tax discount applied,Fail,Fail,
+PAY-04,Payment,Gateway simulation,Stripe checkout works,Pass,Pass,`server/index.ts`
+PAY-05,Payment,Failed payment handling,Failure handled,Pass,Pass,`server/index.ts`
+PAY-06,Payment,Order confirmation,Confirmation recorded,Pass,Pass,`server/index.ts`
+DATA-01,Data Integrity,Duplicate prevention,Unique constraints enforced,Pass,Pass,`prisma/schema.prisma`
+DATA-02,Data Integrity,Correct quantities,Stock validated,Fail,Fail,`server/index.ts`
+DATA-03,Data Integrity,No data loss on refresh,State persists,Pass,Pass,`src/context/CartContext.tsx`
+DATA-04,Data Integrity,DB constraints,Schema constraints,Pass,Pass,`prisma/schema.prisma`
+DATA-05,Data Integrity,Audit logs,Admin actions logged,Fail,Fail,`server/index.ts`
+DEP-01,Deployment,Environment variables,Env template exists,Pass,Pass,`.env.example`
+DEP-02,Deployment,Secrets not in repo,Secrets excluded,Pass,Pass,`.gitignore`
+DEP-03,Deployment,Deployment logs,Logs reviewed,Blocked,Blocked,
+DEP-04,Deployment,CI CD integration,CI workflow exists,Pass,Pass,`.github/workflows/ci.yml`
+DEP-05,Deployment,Rollback plan,Rollback documented,Fail,Fail,
+DOC-01,Documentation,API docs,API docs exist,Fail,Fail,
+DOC-02,Documentation,Role matrix,Role matrix documented,Fail,Fail,
+DOC-03,Documentation,Deployment steps,Deployment documented,Pass,Pass,`docs/DEPLOYMENT_CHECKLIST.md`
+DOC-04,Documentation,Developer onboarding,Onboarding documented,Pass,Pass,`README.md`
+QA-01,QA,Bug tracking,Issues logged,Fail,Fail,
+QA-02,QA,Repro steps,Repro documented,Fail,Fail,
+QA-03,QA,Severity levels,Severity assigned,Fail,Fail,
+QA-04,QA,Fix verification,Fix plan exists,Fail,Fail,

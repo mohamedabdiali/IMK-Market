@@ -6,13 +6,13 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAdmin, token, user } = useAuth();
+  const { isAdmin, token, user, isSuperAdmin } = useAuth();
 
   if (!isAdmin || !token) {
     return <Navigate to="/admin/login" replace />;
   }
 
-  if (user?.mustResetPassword) {
+  if (user?.mustResetPassword && !isSuperAdmin) {
     return <Navigate to="/reset-password" replace />;
   }
 

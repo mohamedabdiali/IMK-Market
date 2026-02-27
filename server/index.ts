@@ -809,7 +809,7 @@ function requireAdmin(req: AuthRequest, res: express.Response, next: express.Nex
     if (user.disabled) {
       return res.status(403).json({ error: "Account disabled" });
     }
-    if (user.mustResetPassword) {
+    if (user.mustResetPassword && !user.isSuperAdmin) {
       return res.status(403).json({ error: "Password reset required" });
     }
     // Allow if super admin or has Admin/Manager/Sales roles

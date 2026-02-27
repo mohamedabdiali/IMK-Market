@@ -144,7 +144,6 @@ The web app runs on `http://localhost:8080` and proxies API calls to `http://loc
 - [Implementation Summary](./flutter_app/docs/UI_IMPLEMENTATION_SUMMARY.md) - Feature details
 
 ### React (Legacy)
-- [Full Documentation](./docs/FULL_DOCUMENTATION.md)
 - [Deployment Checklist](./docs/DEPLOYMENT_CHECKLIST.md)
 - [Security Summary](./docs/SECURITY_SUMMARY.md)
 - [PostgreSQL Migration](./docs/MIGRATION_POSTGRESQL.md)

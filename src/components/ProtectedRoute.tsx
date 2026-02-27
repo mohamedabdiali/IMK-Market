@@ -28,7 +28,7 @@ export function ProtectedRoute({
         return <Navigate to="/login" replace />;
     }
 
-    if (user?.mustResetPassword && !allowPasswordReset) {
+    if (user?.mustResetPassword && !allowPasswordReset && !isSuperAdmin) {
         return <Navigate to="/reset-password" replace />;
     }
 
